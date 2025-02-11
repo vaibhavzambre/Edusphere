@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
-import { Edit, Trash } from "lucide-react";
+import { Edit, Trash, XCircle } from "lucide-react";
 
 export default function ManageClasses() {
   const { user } = useAuth();
@@ -15,7 +15,31 @@ export default function ManageClasses() {
     course: "",
     commencement_year: "",
   });
-
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState({
+    class_code: "",
+    specialization: "",
+    course: "",
+    commencement_year: "",
+  });
+  const filteredClasses = classes.filter((classItem) => {
+    return (
+      (!filters.class_code || classItem.class_code?.toString().includes(filters.class_code)) &&
+      (!filters.specialization || classItem.specialization?.toLowerCase().includes(filters.specialization.toLowerCase())) &&
+      (!filters.course || classItem.course?.toLowerCase().includes(filters.course.toLowerCase())) &&
+      (!filters.commencement_year || classItem.commencement_year?.toString().includes(filters.commencement_year))
+    );
+  });
+  
+  const clearFilters = () => {
+    setFilters({
+      class_code: "",
+      specialization: "",
+      course: "",
+      commencement_year: "",
+    });
+  };
+    
   useEffect(() => {
     fetchClasses();
   }, []);
@@ -122,10 +146,6 @@ export default function ManageClasses() {
 
   return (
     <div className="p-6">
-      <h2 className="text-2xl font-bold mb-4">Manage Classes</h2>
-      <button onClick={() => setShowModal(true)} className="btn-primary">
-        + Add Class
-      </button>
       {/* Add Class Modal */}
       {showModal && (
         <div className="fixed inset-0 flex items-center justify-center bg-gray-800 bg-opacity-50">
@@ -242,39 +262,101 @@ export default function ManageClasses() {
           </div>
         </div>
       )}
+
+      {/* 🔹 Header with Filters & Add Button */}
+<div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+  <h2 className="text-2xl font-bold">Manage Classes</h2>
+  <div className="w-full md:w-auto flex flex-col md:flex-row gap-3">
+    <button
+      onClick={() => setShowFilters(!showFilters)}
+      className="px-4 py-2 btn-secondary text-black border rounded-lg hover:bg-gray-100 transition-colors"
+    >
+      {showFilters ? "Hide Filters" : "Show Filters"}
+    </button>
+    <button
+      onClick={() => setShowModal(true)}
+      className="w-full md:w-auto px-4 py-2 btn-primary text-white rounded-lg hover:bg-indigo-800 transition-colors"
+    >
+      + Add Class
+    </button>
+  </div>
+</div>
+
+{/* 🔹 Filters UI */}
+{showFilters && (
+  <div className="bg-gray-50 p-4 rounded-lg shadow-md mb-4 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+    <input
+      type="text"
+      placeholder="Filter by Class Code"
+      value={filters.class_code}
+      onChange={(e) => setFilters({ ...filters, class_code: e.target.value })}
+      className="input-primary"
+    />
+    <input
+      type="text"
+      placeholder="Filter by Specialization"
+      value={filters.specialization}
+      onChange={(e) => setFilters({ ...filters, specialization: e.target.value })}
+      className="input-primary"
+    />
+    <input
+      type="text"
+      placeholder="Filter by Course"
+      value={filters.course}
+      onChange={(e) => setFilters({ ...filters, course: e.target.value })}
+      className="input-primary"
+    />
+    <input
+      type="text"
+      placeholder="Filter by Commencement Year"
+      value={filters.commencement_year}
+      onChange={(e) => setFilters({ ...filters, commencement_year: e.target.value })}
+      className="input-primary"
+    />
+    <button onClick={clearFilters} className="btn-secondary flex items-center">
+      <XCircle className="h-5 w-5 mr-2" /> Clear Filters
+    </button>
+  </div>
+)}
+
+
       {/* List of Classes */}
-      <div className="bg-white p-6 rounded-lg shadow-md mt-4">
-        <h3 className="text-lg font-semibold mb-2">All Classes</h3>
-        {Array.isArray(classes) && classes.length > 0 ? (
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="bg-gray-100">
-                <th className="p-2 text-left">Class Code</th>
-                <th className="p-2 text-left">Specialization</th>
-                <th className="p-2 text-left">Course</th>
-                <th className="p-2 text-left">Commencement Year</th>
-                <th className="p-2 text-left">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {classes.map((classItem) => (
-                <tr key={classItem._id} className="border-t">
-                  <td className="p-2">{classItem.class_code}</td>
-                  <td className="p-2">{classItem.specialization}</td>
-                  <td className="p-2">{classItem.course}</td>
-                  <td className="p-2">{classItem.commencement_year}</td>
-                  <td className="p-2 flex space-x-3">
-                    <Edit className="text-blue-500 cursor-pointer" onClick={() => handleEditClass(classItem)} />
-                    <Trash className="text-red-500 cursor-pointer" onClick={() => confirmDeleteClass(classItem)} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <p className="text-gray-500 text-center py-4">No classes found.</p>
-        )}
-      </div>
+      {/* 🔹 List of Classes */}
+<div className="bg-white p-6 rounded-lg shadow-md mt-4 overflow-x-auto">
+  <h3 className="text-lg font-semibold mb-2">All Classes</h3>
+  {filteredClasses.length === 0 ? (
+    <p className="text-gray-500">No classes found.</p>
+  ) : (
+    <div className="w-full overflow-x-auto">
+      <table className="min-w-full border-collapse">
+        <thead className="bg-gray-100">
+          <tr>
+            {["Class Code", "Specialization", "Course", "Commencement Year", "Actions"].map((header) => (
+              <th key={header} className="p-3 text-left text-sm font-bold text-gray-800 md:whitespace-normal">
+                {header}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {filteredClasses.map((classItem) => (
+            <tr key={classItem._id} className="border-t odd:bg-gray-50 hover:bg-gray-100">
+              <td className="p-3 whitespace-nowrap">{classItem.class_code}</td>
+              <td className="p-3 whitespace-nowrap">{classItem.specialization}</td>
+              <td className="p-3 whitespace-nowrap">{classItem.course}</td>
+              <td className="p-3 whitespace-nowrap">{classItem.commencement_year}</td>
+              <td className="p-3 flex gap-3">
+                <Edit className="text-blue-500 cursor-pointer" onClick={() => handleEditClass(classItem)} />
+                <Trash className="text-red-500 cursor-pointer" onClick={() => confirmDeleteClass(classItem)} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )}
+</div>
+
     </div>
   );
 }
