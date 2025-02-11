@@ -2,4 +2,4 @@
 2]  Go to C:\Users\ASUS\Downloads\TEMP - EduSphere\EduSphere-main\src\pythonComponent>      and run ------> python jobScraper.py      to run the python script
 3]  Go to C:\Users\ASUS\Downloads\TEMP - EduSphere\EduSphere-main\src\Express API to fetch Jobs>   and run ---> node server.js           first to start the server
 4]  Go to C:\Users\ASUS\Downloads\TEMP - EduSphere\EduSphere-main\src        and run -----> npm run  dev   to run the frontend
-z
+zz
