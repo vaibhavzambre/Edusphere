@@ -1,0 +1,177 @@
+/* General container styling */
+.jobs-container {
+    padding: 20px;
+    font-family: Arial, sans-serif;
+    background-color: #f9f9f9;
+    color: #333;
+}
+
+.jobs-container h1 {
+    text-align: center;
+    color: rgb(79 70 229 / var(--tw-text-opacity, 1));
+    margin-bottom: 20px;
+}
+
+/* Bookmarked Jobs Section */
+.bookmarked-section {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.bookmarked-section button {
+    padding: 10px 20px;
+    font-size: 1rem;
+    background-color: #4b4bff;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.bookmarked-section button:hover {
+    background-color: #3737cc;
+}
+
+/* Grid styling for jobs */
+.jobs-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); /* Adjusts dynamically */
+    gap: 20px;
+}
+
+/* Card styling */
+.job-card {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 12px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    padding: 20px;
+    overflow: hidden;
+    position: relative;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+/* Bookmarked Job Card Styling */
+.job-card.bookmarked {
+    border-color: #ffcc00;
+    box-shadow: 0 4px 8px rgba(255, 204, 0, 0.3);
+}
+
+/* Bookmark Button */
+.bookmark-button {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: #fff;
+    border: none;
+    font-size: 2rem;
+    color: #ddd;
+    cursor: pointer;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: color 0.3s, transform 0.2s;
+}
+
+.bookmark-button:hover {
+    color: #4b4bff;
+    transform: scale(1.1);
+}
+
+.bookmark-button.bookmarked {
+    color: #007bff;
+    background: #e0f7ff;
+}
+
+/* Header styling */
+.job-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.job-logo {
+    width: 70px;
+    height: 70px;
+    border-radius: 16px;
+    object-fit: cover;
+    background-color: #f4f4f4;
+    border: 2px solid #ddd;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    margin-right: 15px;
+}
+
+.job-title h2 {
+    font-size: 1.5rem;
+    margin: 0;
+    color: #4b4b4b;
+}
+
+.job-title p {
+    margin: 0;
+    color: #888;
+}
+
+/* Details styling */
+.job-details p {
+    margin: 5px 0;
+    font-size: 1rem;
+    color: #555;
+}
+
+/* Skills hidden by default */
+.job-hover-content {
+    opacity: 0;
+    visibility: hidden;
+    max-height: 0;
+    overflow: hidden;
+    transition: opacity 0.3s ease, max-height 0.3s ease, visibility 0.3s ease;
+    margin-top: 10px;
+}
+
+.job-hover-content.visible {
+    opacity: 1;
+    visibility: visible;
+    max-height: 200px;
+}
+
+/* Skills styling */
+.job-skills {
+    margin: 10px 0;
+}
+
+.skill-box {
+    display: inline-block;
+    padding: 5px 12px;
+    background: #e0e7ff;
+    color: #4b4bff;
+    border-radius: 15px;
+    font-size: 0.9rem;
+    font-weight: bold;
+    margin: 5px 5px 0 0;
+    text-transform: capitalize;
+    white-space: nowrap;
+}
+
+/* Link styling */
+.job-apply-link {
+    display: inline-block;
+    margin-top: 10px;
+    padding: 10px 20px;
+    background: #4b4bff;
+    color: #fff;
+    text-decoration: none;
+    border-radius: 8px;
+    font-weight: bold;
+    text-align: center;
+    transition: background-color 0.2s;
+}
+
+.job-apply-link:hover {
+    background: #3737cc;
+}
