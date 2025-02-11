@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
-import { Edit, Trash } from "lucide-react"; // ✅ Importing Icons
+import { Edit, Trash, XCircle } from "lucide-react"; // ✅ Importing Icons
 
 export default function ManageTeachers() {
   const { user } = useAuth();
@@ -13,6 +13,24 @@ export default function ManageTeachers() {
   const [editTeacher, setEditTeacher] = useState<any>(null);
 
   const [newTeacher, setNewTeacher] = useState({ name: "", email: "", password: "" });
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState({
+    name: "",
+    email: "",
+  });
+  const filteredTeachers = teachers.filter((teacher) => {
+    return (
+      (!filters.name || teacher.name?.toLowerCase().includes(filters.name.toLowerCase())) &&
+      (!filters.email || teacher.email?.toLowerCase().includes(filters.email.toLowerCase()))
+    );
+  });
+
+  const clearFilters = () => {
+    setFilters({
+      name: "",
+      email: "",
+    });
+  };
 
   useEffect(() => {
     fetchTeachers();
@@ -23,9 +41,9 @@ export default function ManageTeachers() {
     try {
       const response = await fetch("http://localhost:5001/api/auth/teachers", {
         method: "GET",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${localStorage.getItem("token")}`, 
+          "Authorization": `Bearer ${localStorage.getItem("token")}`,
         },
       });
 
@@ -137,12 +155,6 @@ export default function ManageTeachers() {
 
   return (
     <div className="p-6">
-      <h2 className="text-2xl font-bold mb-4">Manage Teachers</h2>
-
-      {/* 🔹 Add Teacher Button */}
-      <button onClick={() => setShowModal(true)} className="btn-primary">
-        + Add Teacher
-      </button>
 
       {/* 🔹 Add Teacher Modal */}
       {showModal && (
@@ -235,31 +247,80 @@ export default function ManageTeachers() {
           </div>
         </div>
       )}
+      {/* 🔹 Header with Filters & Add Button */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+        <h2 className="text-2xl font-bold">Manage Teachers</h2>
+        <div className="w-full md:w-auto flex flex-col md:flex-row gap-3">
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className="px-4 py-2 btn-secondary text-black border rounded-lg hover:bg-gray-100 transition-colors"
+          >
+            {showFilters ? "Hide Filters" : "Show Filters"}
+          </button>
+          <button
+            onClick={() => setShowModal(true)}
+            className="w-full md:w-auto px-4 py-2 btn-primary text-white rounded-lg hover:bg-indigo-800 transition-colors"
+          >
+            + Add Teacher
+          </button>
+        </div>
+      </div>
+
+      {/* 🔹 Filters UI */}
+      {showFilters && (
+        <div className="bg-gray-50 p-4 rounded-lg shadow-md mb-4 grid gap-4 grid-cols-1 sm:grid-cols-2">
+          <input
+            type="text"
+            placeholder="Filter by Name"
+            value={filters.name}
+            onChange={(e) => setFilters({ ...filters, name: e.target.value })}
+            className="input-primary"
+          />
+          <input
+            type="text"
+            placeholder="Filter by Email"
+            value={filters.email}
+            onChange={(e) => setFilters({ ...filters, email: e.target.value })}
+            className="input-primary"
+          />
+          <button onClick={clearFilters} className="btn-secondary flex items-center">
+            <XCircle className="h-5 w-5 mr-2" /> Clear Filters
+          </button>
+        </div>
+      )}
 
       {/* 🔹 List of Teachers */}
-      <div className="bg-white p-6 rounded-lg shadow-md mt-4">
+      <div className="bg-white p-6 rounded-lg shadow-md mt-4 overflow-x-auto">
         <h3 className="text-lg font-semibold mb-2">All Teachers</h3>
-        <table className="w-full border-collapse">
-          <thead>
-            <tr className="bg-gray-100">
-              <th className="p-2 text-left">Name</th>
-              <th className="p-2 text-left">Email</th>
-              <th className="p-2 text-left">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {teachers.map((teacher) => (
-              <tr key={teacher._id} className="border-t">
-                <td className="p-2">{teacher.name}</td>
-                <td className="p-2">{teacher.email}</td>
-                <td className="p-2 flex space-x-3">
-                  <Edit className="text-blue-500 cursor-pointer" onClick={() => handleEditTeacher(teacher)} />
-                  <Trash className="text-red-500 cursor-pointer" onClick={() => confirmDeleteTeacher(teacher)} />
-                </td>
+
+        {filteredTeachers.length === 0 ? (
+          <p className="text-gray-500">No teachers found.</p>
+        ) : (<div className="w-full overflow-x-auto">
+          <table className="min-w-full border-collapse">
+            <thead className="bg-gray-100">
+              <tr>
+                {["Name", "Email", "Actions"].map((header) => (
+                  <th key={header} className="p-3 text-left text-sm font-bold text-gray-800 md:whitespace-normal">
+                    {header}
+                  </th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filteredTeachers.map((teacher) => (
+                <tr key={teacher._id} className="border-t odd:bg-gray-50 hover:bg-gray-100">
+                  <td className="p-3 whitespace-nowrap">{teacher.name}</td>
+                  <td className="p-3 whitespace-nowrap">{teacher.email}</td>
+                  <td className="p-3 flex gap-3">
+                    <Edit className="text-blue-500 cursor-pointer" onClick={() => handleEditTeacher(teacher)} />
+                    <Trash className="text-red-500 cursor-pointer" onClick={() => confirmDeleteTeacher(teacher)} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>)}
+
       </div>
     </div>
   );
