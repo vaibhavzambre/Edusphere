@@ -8,7 +8,6 @@ export default function AuthForm({ isLogin }: { isLogin: boolean }) {
     name: "",
     email: "",
     role: "",
-    sap_id: "",
     password: "",
   });
   const [error, setError] = useState("");
@@ -100,9 +99,7 @@ export default function AuthForm({ isLogin }: { isLogin: boolean }) {
 
             {step === 3 && (
               <>
-                {formData.role === "student" && (
-                  <input type="number" name="sap_id" placeholder="SAP ID" className="input-primary w-full" onChange={handleChange} required />
-                )}
+                {formData.role === "student"}
                 <input type="password" name="password" placeholder="Password" className="input-primary w-full" onChange={handleChange} required />
                 <button type="submit" className="btn-primary w-full">Register</button>
                 <button onClick={() => (window.location.href = "/login")} className="text-blue-500 underline">Already have an account? Login</button>

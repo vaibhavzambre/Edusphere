@@ -22,7 +22,14 @@ export default function ManageClasses() {
 
   const fetchClasses = async () => {
     try {
-      const response = await fetch("http://localhost:5001/api/classes");
+      const response = await fetch("http://localhost:5001/api/classes", {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${localStorage.getItem("token")}`,
+        },
+      });
+      if (!response.ok) throw new Error("Failed to fetch classes");
       const data = await response.json();
       setClasses(data);
     } catch (error: any) {
@@ -36,7 +43,10 @@ export default function ManageClasses() {
     try {
       const response = await fetch("http://localhost:5001/api/classes/create", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${localStorage.getItem("token")}`,
+        },
         body: JSON.stringify(newClass),
       });
       const result = await response.json();
@@ -63,7 +73,10 @@ export default function ManageClasses() {
     try {
       const response = await fetch(`http://localhost:5001/api/classes/update/${selectedClass._id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${localStorage.getItem("token")}`,
+        },
         body: JSON.stringify(selectedClass),
       });
       const result = await response.json();
@@ -84,6 +97,10 @@ export default function ManageClasses() {
     try {
       const response = await fetch(`http://localhost:5001/api/classes/delete/${id}`, {
         method: "DELETE",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${localStorage.getItem("token")}`,
+        },
       });
       const result = await response.json();
       if (response.ok) {
@@ -98,7 +115,6 @@ export default function ManageClasses() {
     }
   };
 
-  // Opens the delete confirmation modal and sets the selected class.
   const confirmDeleteClass = (classData: any) => {
     setSelectedClass(classData);
     setDeleteModal(true);
@@ -110,7 +126,6 @@ export default function ManageClasses() {
       <button onClick={() => setShowModal(true)} className="btn-primary">
         + Add Class
       </button>
-
       {/* Add Class Modal */}
       {showModal && (
         <div className="fixed inset-0 flex items-center justify-center bg-gray-800 bg-opacity-50">
@@ -159,7 +174,6 @@ export default function ManageClasses() {
           </div>
         </div>
       )}
-
       {/* Edit Class Modal */}
       {editModal && selectedClass && (
         <div className="fixed inset-0 flex items-center justify-center bg-gray-800 bg-opacity-50">
@@ -208,7 +222,6 @@ export default function ManageClasses() {
           </div>
         </div>
       )}
-
       {/* Delete Confirmation Modal */}
       {deleteModal && selectedClass && (
         <div className="fixed inset-0 flex items-center justify-center bg-gray-800 bg-opacity-50">
@@ -218,26 +231,17 @@ export default function ManageClasses() {
               Class Code: <strong>{selectedClass.class_code}</strong> | Commencement Year: <strong>{selectedClass.commencement_year}</strong>
             </p>
             <div className="flex justify-end gap-3 mt-4">
-              <button
-                onClick={() => setDeleteModal(false)}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                Cancel
-              </button>
-              <button
-                className="btn-primary bg-red-500"
-                onClick={() => {
+              <button onClick={() => setDeleteModal(false)} className="text-gray-500 hover:text-gray-700">Cancel</button>
+              <button className="btn-primary bg-red-500" onClick={() => {
                   handleDeleteClass(selectedClass._id);
                   setDeleteModal(false);
-                }}
-              >
+                }}>
                 Delete
               </button>
             </div>
           </div>
         </div>
       )}
-
       {/* List of Classes */}
       <div className="bg-white p-6 rounded-lg shadow-md mt-4">
         <h3 className="text-lg font-semibold mb-2">All Classes</h3>
@@ -260,14 +264,8 @@ export default function ManageClasses() {
                   <td className="p-2">{classItem.course}</td>
                   <td className="p-2">{classItem.commencement_year}</td>
                   <td className="p-2 flex space-x-3">
-                    <Edit
-                      className="text-blue-500 cursor-pointer"
-                      onClick={() => handleEditClass(classItem)}
-                    />
-                    <Trash
-                      className="text-red-500 cursor-pointer"
-                      onClick={() => confirmDeleteClass(classItem)}
-                    />
+                    <Edit className="text-blue-500 cursor-pointer" onClick={() => handleEditClass(classItem)} />
+                    <Trash className="text-red-500 cursor-pointer" onClick={() => confirmDeleteClass(classItem)} />
                   </td>
                 </tr>
               ))}

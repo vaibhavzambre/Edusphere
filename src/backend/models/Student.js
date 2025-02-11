@@ -43,4 +43,4 @@ StudentSchema.pre("validate", async function (next) {
   }
 });
 
-export default mongoose.model("Student", StudentSchema);
+export default mongoose.model("student", StudentSchema);

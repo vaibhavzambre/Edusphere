@@ -1,11 +1,11 @@
 import express from "express";
 import Class from "../models/Class.js";
-import { checkAdmin } from "../middleware/authMiddleware.js";
+import { checkAdmin, authMiddleware  } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
 // CREATE a New Class (Only Admin)
-router.post("/create", checkAdmin, async (req, res) => {
+router.post("/create", authMiddleware, checkAdmin, async (req, res) => {
   try {
     console.log("🔄 Incoming request body:", req.body);
     const { class_code, specialization, course, commencement_year } = req.body;
@@ -48,7 +48,7 @@ router.get("/", async (req, res) => {
 });
 
 // UPDATE a Class (Only Admin)
-router.put("/update/:id", checkAdmin, async (req, res) => {
+router.put("/update/:id", authMiddleware, checkAdmin, async (req, res) => {
   try {
     const { class_code, specialization, course, commencement_year } = req.body;
     const updatedClass = await Class.findByIdAndUpdate(
@@ -71,7 +71,7 @@ router.put("/update/:id", checkAdmin, async (req, res) => {
 });
 
 // DELETE a Class (Only Admin)
-router.delete("/delete/:id", checkAdmin, async (req, res) => {
+router.delete("/delete/:id", authMiddleware, checkAdmin, async (req, res) => {
   try {
     await Class.findByIdAndDelete(req.params.id);
     res.status(200).json({ message: "Class deleted successfully" });

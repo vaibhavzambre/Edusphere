@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
-import { Edit, Trash, XCircle } from "lucide-react"; // ✅ Importing Icons
+import { Edit, Trash, XCircle } from "lucide-react"; // Importing Icons
 
 export default function ManageTeachers() {
   const { user } = useAuth();
@@ -8,10 +8,8 @@ export default function ManageTeachers() {
   const [showModal, setShowModal] = useState(false);
   const [editModal, setEditModal] = useState(false);
   const [deleteModal, setDeleteModal] = useState(false);
-  // Changed teacherToDelete to hold the entire teacher object instead of just the ID.
   const [teacherToDelete, setTeacherToDelete] = useState<any>(null);
   const [editTeacher, setEditTeacher] = useState<any>(null);
-
   const [newTeacher, setNewTeacher] = useState({ name: "", email: "", password: "" });
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState({
@@ -31,12 +29,10 @@ export default function ManageTeachers() {
       email: "",
     });
   };
-
   useEffect(() => {
     fetchTeachers();
   }, []);
 
-  // ✅ Fetch Teachers from Backend
   const fetchTeachers = async () => {
     try {
       const response = await fetch("http://localhost:5001/api/auth/teachers", {
@@ -46,9 +42,7 @@ export default function ManageTeachers() {
           "Authorization": `Bearer ${localStorage.getItem("token")}`,
         },
       });
-
       if (!response.ok) throw new Error("Failed to fetch teachers");
-
       const data = await response.json();
       console.log("Fetched Teachers:", data);
       setTeachers(Array.isArray(data) ? data : []);
@@ -58,21 +52,20 @@ export default function ManageTeachers() {
     }
   };
 
-  // ✅ Create Teacher Function with Duplicate Check
   const handleCreateTeacher = async () => {
-    // Check if a teacher with the same email already exists (case-insensitive).
     if (teachers.some((t) => t.email.toLowerCase() === newTeacher.email.toLowerCase())) {
       alert("Teacher with this email already exists.");
       return;
     }
-
     try {
       const response = await fetch("http://localhost:5001/api/auth/teachers/create", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${localStorage.getItem("token")}`,
+        },
         body: JSON.stringify({ ...newTeacher, role: "teacher" }),
       });
-
       if (response.ok) {
         alert("Teacher created successfully");
         setNewTeacher({ name: "", email: "", password: "" });
@@ -87,15 +80,12 @@ export default function ManageTeachers() {
     }
   };
 
-  // ✅ Open Edit Teacher Modal
   const handleEditTeacher = (teacher: any) => {
     setEditTeacher(teacher);
     setEditModal(true);
   };
 
-  // ✅ Update Teacher Function with Duplicate Check
   const handleUpdateTeacher = async () => {
-    // Check if another teacher with the same email exists (case-insensitive).
     if (
       teachers.some(
         (t) =>
@@ -106,14 +96,15 @@ export default function ManageTeachers() {
       alert("Another teacher with this email already exists.");
       return;
     }
-
     try {
       const response = await fetch(`http://localhost:5001/api/auth/teachers/update/${editTeacher._id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${localStorage.getItem("token")}`,
+        },
         body: JSON.stringify(editTeacher),
       });
-
       if (response.ok) {
         alert("Teacher updated successfully");
         fetchTeachers();
@@ -127,19 +118,19 @@ export default function ManageTeachers() {
     }
   };
 
-  // ✅ Open Delete Confirmation Modal and set the teacher object
   const confirmDeleteTeacher = (teacher: any) => {
     setTeacherToDelete(teacher);
     setDeleteModal(true);
   };
 
-  // ✅ Delete Teacher Function
   const handleDeleteTeacher = async () => {
     try {
       const response = await fetch(`http://localhost:5001/api/auth/teachers/delete/${teacherToDelete._id}`, {
         method: "DELETE",
+        headers: {
+          "Authorization": `Bearer ${localStorage.getItem("token")}`,
+        },
       });
-
       if (response.ok) {
         alert("Teacher deleted successfully");
         fetchTeachers();
@@ -155,8 +146,6 @@ export default function ManageTeachers() {
 
   return (
     <div className="p-6">
-
-      {/* 🔹 Add Teacher Modal */}
       {showModal && (
         <div className="fixed inset-0 flex items-center justify-center bg-gray-800 bg-opacity-50">
           <div className="bg-white p-6 rounded-lg shadow-md w-96">
@@ -182,7 +171,6 @@ export default function ManageTeachers() {
               value={newTeacher.password}
               onChange={(e) => setNewTeacher({ ...newTeacher, password: e.target.value })}
             />
-
             <div className="flex justify-end gap-3 mt-4">
               <button onClick={() => setShowModal(false)} className="text-gray-500 hover:text-gray-700">
                 Cancel
@@ -194,8 +182,6 @@ export default function ManageTeachers() {
           </div>
         </div>
       )}
-
-      {/* 🔹 Edit Teacher Modal */}
       {editModal && editTeacher && (
         <div className="fixed inset-0 flex items-center justify-center bg-gray-800 bg-opacity-50">
           <div className="bg-white p-6 rounded-lg shadow-md w-96">
@@ -214,7 +200,6 @@ export default function ManageTeachers() {
               value={editTeacher.email}
               onChange={(e) => setEditTeacher({ ...editTeacher, email: e.target.value })}
             />
-
             <div className="flex justify-end gap-3 mt-4">
               <button onClick={() => setEditModal(false)} className="text-gray-500 hover:text-gray-700">
                 Cancel
@@ -226,8 +211,6 @@ export default function ManageTeachers() {
           </div>
         </div>
       )}
-
-      {/* 🔹 Delete Confirmation Modal */}
       {deleteModal && teacherToDelete && (
         <div className="fixed inset-0 flex items-center justify-center bg-gray-800 bg-opacity-50">
           <div className="bg-white p-6 rounded-lg shadow-md w-96">
@@ -247,7 +230,6 @@ export default function ManageTeachers() {
           </div>
         </div>
       )}
-      {/* 🔹 Header with Filters & Add Button */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
         <h2 className="text-2xl font-bold">Manage Teachers</h2>
         <div className="w-full md:w-auto flex flex-col md:flex-row gap-3">
@@ -289,7 +271,6 @@ export default function ManageTeachers() {
         </div>
       )}
 
-      {/* 🔹 List of Teachers */}
       <div className="bg-white p-6 rounded-lg shadow-md mt-4 overflow-x-auto">
         <h3 className="text-lg font-semibold mb-2">All Teachers</h3>
 

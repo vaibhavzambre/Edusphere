@@ -6,7 +6,7 @@ interface NewStudent {
   name: string;
   email: string;
   password: string;
-  reg_id: string; // registration id stored as string in state
+  reg_id: string;
   class_code: string;
   commencement_year: string;
 }
@@ -34,43 +34,58 @@ export default function ManageStudents() {
     name: "",
     email: "",
     sap_id: "",
-    reg_id: "",       // Added
-    class_code: "",   // Added
+    reg_id: "", // Added
+    class_code: "", // Added
     course: "",
     specialization: "",
     year: "",
   });
-  
+
   // Filter students based on multiple fields
   const filteredStudents = students.filter((student) => {
     return (
-      (!filters.name || student.name?.toLowerCase().includes(filters.name.toLowerCase())) &&
-      (!filters.email || student.email?.toLowerCase().includes(filters.email.toLowerCase())) &&
-      (!filters.sap_id || student.profile?.sap_id?.toString().includes(filters.sap_id)) &&
+      (!filters.name ||
+        student.name?.toLowerCase().includes(filters.name.toLowerCase())) &&
+      (!filters.email ||
+        student.email?.toLowerCase().includes(filters.email.toLowerCase())) &&
+      (!filters.sap_id ||
+        student.profile?.sap_id?.toString().includes(filters.sap_id)) &&
       // Add Reg ID filter
-      (!filters.reg_id || student.profile?.reg_id?.toString().includes(filters.reg_id)) &&
+      (!filters.reg_id ||
+        student.profile?.reg_id?.toString().includes(filters.reg_id)) &&
       // Add Class Code filter
-      (!filters.class_code || student.profile.class?.class_code?.toString().includes(filters.class_code)) &&
+      (!filters.class_code ||
+        student.profile.class?.class_code
+          ?.toString()
+          .includes(filters.class_code)) &&
       // Correct course, specialization, and year paths
-      (!filters.course || student.profile.class?.course?.toLowerCase().includes(filters.course.toLowerCase())) &&
-      (!filters.specialization || student.profile.class?.specialization?.toLowerCase().includes(filters.specialization.toLowerCase())) &&
-      (!filters.year || student.profile.class?.commencement_year?.toString().includes(filters.year))
+      (!filters.course ||
+        student.profile.class?.course
+          ?.toLowerCase()
+          .includes(filters.course.toLowerCase())) &&
+      (!filters.specialization ||
+        student.profile.class?.specialization
+          ?.toLowerCase()
+          .includes(filters.specialization.toLowerCase())) &&
+      (!filters.year ||
+        student.profile.class?.commencement_year
+          ?.toString()
+          .includes(filters.year))
     );
   });
-  
+
   const clearFilters = () => {
     setFilters({
       name: "",
       email: "",
       sap_id: "",
-      reg_id: "",      // Added
-      class_code: "",  // Added
+      reg_id: "", // Added
+      class_code: "", // Added
       course: "",
       specialization: "",
       year: "",
     });
   };
-  
   useEffect(() => {
     fetchStudents();
     fetchClasses();
@@ -104,8 +119,11 @@ export default function ManageStudents() {
     }
   };
 
-  // Helper to compute SAP ID.
-  const computeSapId = (class_code: string, commencement_year: string, reg_id: string): number => {
+  const computeSapId = (
+    class_code: string,
+    commencement_year: string,
+    reg_id: string
+  ): number => {
     const classCodeNum = Number(class_code);
     const commencementYearNum = Number(commencement_year);
     const trailingTwo = commencementYearNum.toString().slice(-2);
@@ -119,22 +137,37 @@ export default function ManageStudents() {
       alert("Please select a valid Class Code and Commencement Year.");
       return;
     }
-    const newSapId = computeSapId(newStudent.class_code, newStudent.commencement_year, newStudent.reg_id);
+    const newSapId = computeSapId(
+      newStudent.class_code,
+      newStudent.commencement_year,
+      newStudent.reg_id
+    );
     if (
       students.some(
-        (student) =>
-          student.profile && student.profile.sap_id === newSapId
+        (student) => student.profile && student.profile.sap_id === newSapId
       )
     ) {
-      alert("A student with this registration (and thus SAP ID) already exists for the given class.");
+      alert(
+        "A student with this registration (and thus SAP ID) already exists for the given class."
+      );
       return;
     }
     try {
-      const response = await fetch("http://localhost:5001/api/auth/students/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...newStudent, reg_id: Number(newStudent.reg_id), role: "student" }),
-      });
+      const response = await fetch(
+        "http://localhost:5001/api/auth/students/create",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+          body: JSON.stringify({
+            ...newStudent,
+            reg_id: Number(newStudent.reg_id),
+            role: "student",
+          }),
+        }
+      );
       if (response.ok) {
         alert("Student created successfully");
         setNewStudent({
@@ -163,14 +196,19 @@ export default function ManageStudents() {
         ...student.profile,
         class_code: student.profile?.class?.class_code || "",
         commencement_year: student.profile?.class?.commencement_year || "",
-        reg_id: student.profile?.reg_id ? student.profile.reg_id.toString() : "",
+        reg_id: student.profile?.reg_id
+          ? student.profile.reg_id.toString()
+          : "",
       },
     });
     setEditModal(true);
   };
 
   const handleUpdateStudent = async () => {
-    if (!editStudent.profile.class_code || !editStudent.profile.commencement_year) {
+    if (
+      !editStudent.profile.class_code ||
+      !editStudent.profile.commencement_year
+    ) {
       alert("Please select a valid Class Code and Commencement Year.");
       return;
     }
@@ -187,7 +225,9 @@ export default function ManageStudents() {
           student.profile.sap_id === updatedSapId
       )
     ) {
-      alert("Another student with this registration (SAP ID) already exists for the given class.");
+      alert(
+        "Another student with this registration (SAP ID) already exists for the given class."
+      );
       return;
     }
     try {
@@ -198,11 +238,17 @@ export default function ManageStudents() {
           reg_id: Number(editStudent.profile.reg_id),
         },
       };
-      const response = await fetch(`http://localhost:5001/api/auth/students/update/${editStudent._id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updatedPayload),
-      });
+      const response = await fetch(
+        `http://localhost:5001/api/auth/students/update/${editStudent._id}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+          body: JSON.stringify(updatedPayload),
+        }
+      );
       if (response.ok) {
         alert("Student updated successfully");
         fetchStudents();
@@ -237,9 +283,15 @@ export default function ManageStudents() {
   const handleDeleteStudent = async () => {
     if (!studentToDelete) return;
     try {
-      const response = await fetch(`http://localhost:5001/api/auth/students/delete/${studentToDelete._id}`, {
-        method: "DELETE",
-      });
+      const response = await fetch(
+        `http://localhost:5001/api/auth/students/delete/${studentToDelete._id}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+        }
+      );
       if (response.ok) {
         alert("Student deleted successfully");
         fetchStudents();
@@ -252,12 +304,6 @@ export default function ManageStudents() {
 
   return (
     <div className="p-6">
-      {/* <h2 className="text-2xl font-bold mb-4">Manage Students</h2>
-      <button onClick={() => setShowModal(true)} className="btn-primary">
-        + Add Student
-      </button> */}
-
-      {/* Add Student Modal */}
       {showModal && (
         <div className="fixed inset-0 flex items-center justify-center bg-gray-800 bg-opacity-50">
           <div className="bg-white p-6 rounded-lg shadow-md w-96">
@@ -267,35 +313,40 @@ export default function ManageStudents() {
               placeholder="Full Name"
               className="input-primary w-full mb-2"
               value={newStudent.name}
-              onChange={(e) => setNewStudent({ ...newStudent, name: e.target.value })}
+              onChange={(e) =>
+                setNewStudent({ ...newStudent, name: e.target.value })
+              }
             />
             <input
               type="email"
               placeholder="Email"
               className="input-primary w-full mb-2"
               value={newStudent.email}
-              onChange={(e) => setNewStudent({ ...newStudent, email: e.target.value })}
+              onChange={(e) =>
+                setNewStudent({ ...newStudent, email: e.target.value })
+              }
             />
             <input
               type="password"
               placeholder="Password"
               className="input-primary w-full mb-2"
               value={newStudent.password}
-              onChange={(e) => setNewStudent({ ...newStudent, password: e.target.value })}
+              onChange={(e) =>
+                setNewStudent({ ...newStudent, password: e.target.value })
+              }
             />
             <input
               type="text"
               placeholder="Registration ID (5 digits)"
               className="input-primary w-full mb-2"
               value={newStudent.reg_id}
-              onChange={(e) => setNewStudent({ ...newStudent, reg_id: e.target.value })}
+              onChange={(e) =>
+                setNewStudent({ ...newStudent, reg_id: e.target.value })
+              }
               pattern="\d{5}"
               maxLength={5}
               inputMode="numeric"
             />
-            {/* Inside the Filters UI div */}
-
-            {/* Class Code Dropdown */}
             <select
               className="input-primary w-full mb-2"
               value={newStudent.class_code}
@@ -309,13 +360,14 @@ export default function ManageStudents() {
               }}
             >
               <option value="">Select Class Code</option>
-              {Array.from(new Set(classes.map((c: any) => c.class_code))).map((classCode) => (
-                <option key={classCode} value={classCode}>
-                  {classCode}
-                </option>
-              ))}
+              {Array.from(new Set(classes.map((c: any) => c.class_code))).map(
+                (classCode) => (
+                  <option key={classCode} value={classCode}>
+                    {classCode}
+                  </option>
+                )
+              )}
             </select>
-            {/* Commencement Year Dropdown */}
             <select
               className="input-primary w-full mb-2"
               value={newStudent.commencement_year}
@@ -333,7 +385,10 @@ export default function ManageStudents() {
                 Array.from(
                   new Set(
                     classes
-                      .filter((c: any) => c.class_code.toString() === newStudent.class_code)
+                      .filter(
+                        (c: any) =>
+                          c.class_code.toString() === newStudent.class_code
+                      )
                       .map((c: any) => c.commencement_year)
                   )
                 ).map((year) => (
@@ -343,7 +398,10 @@ export default function ManageStudents() {
                 ))}
             </select>
             <div className="flex justify-end gap-3 mt-4">
-              <button onClick={() => setShowModal(false)} className="text-gray-500 hover:text-gray-700">
+              <button
+                onClick={() => setShowModal(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
                 Cancel
               </button>
               <button className="btn-primary" onClick={handleCreateStudent}>
@@ -353,8 +411,6 @@ export default function ManageStudents() {
           </div>
         </div>
       )}
-
-      {/* Edit Student Modal */}
       {editModal && editStudent && (
         <div className="fixed inset-0 flex items-center justify-center bg-gray-800 bg-opacity-50">
           <div className="bg-white p-6 rounded-lg shadow-md w-96">
@@ -386,7 +442,6 @@ export default function ManageStudents() {
               maxLength={5}
               inputMode="numeric"
             />
-            {/* Editable Dropdown for Class Code */}
             <select
               className="input-primary w-full mb-2"
               value={editStudent.profile?.class_code || ""}
@@ -401,13 +456,14 @@ export default function ManageStudents() {
               }
             >
               <option value="">Select Class Code</option>
-              {Array.from(new Set(classes.map((c: any) => c.class_code))).map((classCode) => (
-                <option key={classCode} value={classCode}>
-                  {classCode}
-                </option>
-              ))}
+              {Array.from(new Set(classes.map((c: any) => c.class_code))).map(
+                (classCode) => (
+                  <option key={classCode} value={classCode}>
+                    {classCode}
+                  </option>
+                )
+              )}
             </select>
-            {/* Editable Dropdown for Commencement Year */}
             <select
               className="input-primary w-full mb-2"
               value={editStudent.profile?.commencement_year || ""}
@@ -427,7 +483,11 @@ export default function ManageStudents() {
                 Array.from(
                   new Set(
                     classes
-                      .filter((c: any) => c.class_code.toString() === editStudent.profile.class_code.toString())
+                      .filter(
+                        (c: any) =>
+                          c.class_code.toString() ===
+                          editStudent.profile.class_code.toString()
+                      )
                       .map((c: any) => c.commencement_year)
                   )
                 ).map((year) => (
@@ -444,12 +504,16 @@ export default function ManageStudents() {
               <br />
               {editStudent.profile?.class && (
                 <small>
-                  {editStudent.profile.class.course} - {editStudent.profile.class.specialization}
+                  {editStudent.profile.class.course} -{" "}
+                  {editStudent.profile.class.specialization}
                 </small>
               )}
             </div>
             <div className="flex justify-end gap-3 mt-4">
-              <button onClick={() => setEditModal(false)} className="text-gray-500 hover:text-gray-700">
+              <button
+                onClick={() => setEditModal(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
                 Cancel
               </button>
               <button className="btn-primary" onClick={handleUpdateStudent}>
@@ -459,182 +523,211 @@ export default function ManageStudents() {
           </div>
         </div>
       )}
-
-      {/* Delete Confirmation Modal */}
       {deleteModal && studentToDelete && (
         <div className="fixed inset-0 flex items-center justify-center bg-gray-800 bg-opacity-50">
           <div className="bg-white p-6 rounded-lg shadow-md w-96">
-            <h3 className="text-lg font-semibold mb-2">Are you sure you want to delete this student?</h3>
+            <h3 className="text-lg font-semibold mb-2">
+              Are you sure you want to delete this student?
+            </h3>
             <p className="mb-4">
               Name: <strong>{studentToDelete.name}</strong> <br />
-              Class Code: <strong>{studentToDelete.profile?.class?.class_code || "N/A"}</strong> <br />
-              Commencement Year: <strong>{studentToDelete.profile?.class?.commencement_year || "N/A"}</strong> <br />
-              SAP ID: <strong>{studentToDelete.profile?.sap_id || "N/A"}</strong>
+              Class Code:{" "}
+              <strong>
+                {studentToDelete.profile?.class?.class_code || "N/A"}
+              </strong>{" "}
+              <br />
+              Commencement Year:{" "}
+              <strong>
+                {studentToDelete.profile?.class?.commencement_year || "N/A"}
+              </strong>{" "}
+              <br />
+              SAP ID:{" "}
+              <strong>{studentToDelete.profile?.sap_id || "N/A"}</strong>
             </p>
             <div className="flex justify-end gap-3 mt-4">
-              <button onClick={() => setDeleteModal(false)} className="text-gray-500 hover:text-gray-700">
+              <button
+                onClick={() => setDeleteModal(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
                 Cancel
               </button>
-              <button className="btn-primary bg-red-500" onClick={handleDeleteStudent}>
+              <button
+                className="btn-primary bg-red-500"
+                onClick={handleDeleteStudent}
+              >
                 Delete
               </button>
             </div>
           </div>
         </div>
       )}
-      {/* Header with Filters & Add Button */}
-<div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-  <h2 className="text-2xl font-bold">Manage Students</h2>
-  <div className="w-full md:w-auto flex flex-col md:flex-row gap-3">
-    <button
-      onClick={() => setShowFilters(!showFilters)}
-      className="px-4 py-2 btn-secondary text-black border rounded-lg hover:bg-gray-100 transition-colors"
-    >
-      {showFilters ? "Hide Filters" : "Show Filters"}
-    </button>
-    <button
-      onClick={() => setShowModal(true)}
-      className="w-full md:w-auto px-4 py-2 btn-primary text-white rounded-lg hover:bg-indigo-800 transition-colors"
-    >
-      + Add Student
-    </button>
-  </div>
-</div>
 
-{/* Filters UI */}
-{showFilters && (
-  <div className="bg-gray-50 p-4 rounded-lg shadow-md mb-4 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-  {/* Existing and new filter inputs go here */}
-    <input
-      type="text"
-      placeholder="Filter by Name"
-      value={filters.name}
-      onChange={(e) => setFilters({ ...filters, name: e.target.value })}
-      className="input-primary"
-    />
-    <input
-      type="text"
-      placeholder="Filter by Email"
-      value={filters.email}
-      onChange={(e) => setFilters({ ...filters, email: e.target.value })}
-      className="input-primary"
-    />
-    <input
-      type="text"
-      placeholder="Filter by SAP ID"
-      value={filters.sap_id}
-      onChange={(e) => setFilters({ ...filters, sap_id: e.target.value })}
-      className="input-primary"
-    />
-    <input
-      type="text"
-      placeholder="Filter by Course"
-      value={filters.course}
-      onChange={(e) => setFilters({ ...filters, course: e.target.value })}
-      className="input-primary"
-    />
-    <input
-      type="text"
-      placeholder="Filter by Specialization"
-      value={filters.specialization}
-      onChange={(e) => setFilters({ ...filters, specialization: e.target.value })}
-      className="input-primary"
-    />
-    <input
-  type="text"
-  placeholder="Filter by Reg ID"
-  value={filters.reg_id}
-  onChange={(e) => setFilters({ ...filters, reg_id: e.target.value })}
-  className="input-primary"
-/>
-<input
-  type="text"
-  placeholder="Filter by Class Code"
-  value={filters.class_code}
-  onChange={(e) => setFilters({ ...filters, class_code: e.target.value })}
-  className="input-primary"
-/>
-    <input
-      type="text"
-      placeholder="Filter by Year"
-      value={filters.year}
-      onChange={(e) => setFilters({ ...filters, year: e.target.value })}
-      className="input-primary"
-    />
-    <button onClick={clearFilters} className="btn-secondary flex items-center">
-      <XCircle className="h-5 w-5 mr-2" /> Clear Filters
-    </button>
-  </div>
-)}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+        <h2 className="text-2xl font-bold">Manage Students</h2>
+        <div className="w-full md:w-auto flex flex-col md:flex-row gap-3">
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className="px-4 py-2 btn-secondary text-black border rounded-lg hover:bg-gray-100 transition-colors"
+          >
+            {showFilters ? "Hide Filters" : "Show Filters"}
+          </button>
+          <button
+            onClick={() => setShowModal(true)}
+            className="w-full md:w-auto px-4 py-2 btn-primary text-white rounded-lg hover:bg-indigo-800 transition-colors"
+          >
+            + Add Student
+          </button>
+        </div>
+      </div>
 
-      {/* List of Students */}
-  
-{/* List of Students */}
-<div className="bg-white p-6 rounded-lg shadow-md mt-4 overflow-x-auto">
-  <h3 className="text-lg font-semibold mb-2">All Students</h3>
-  {students.length === 0 ? (
-    <p className="text-gray-500 text-center py-4">No students present.</p> // Shown when there are no students
-  ) : filteredStudents.length === 0 ? (
-    <p className="text-gray-500 text-center py-4">No matching students found.</p> // Shown when filters return no results
-  ) :  (
-    <div className="w-full overflow-x-auto">
-      <table className="min-w-full border-collapse">
-        <thead className="bg-gray-100">
-          <tr>
-            {[
-              "Name",
-              "Email",
-              "Reg ID",
-              "SAP ID",
-              "Class Code",
-              "Commencement Year",
-              "Course",
-              "Specialization",
-              "Actions",
-            ].map((header) => (
-              <th
-                key={header}
-                className="p-3 text-left text-sm font-bold text-gray-800 md:whitespace-normal"
-              >
-                {header}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {filteredStudents.map((student) => (
-            <tr
-              key={student._id}
-              className="border-t odd:bg-gray-50 hover:bg-gray-100"
-            >
-              <td className="p-3 whitespace-nowrap">{student.name}</td>
-              <td className="p-3 whitespace-nowrap">{student.email}</td>
-              <td className="p-3 whitespace-nowrap">{student.profile?.reg_id || "N/A"}</td>
-              <td className="p-3 whitespace-nowrap">{student.profile?.sap_id || "N/A"}</td>
-              <td className="p-3 whitespace-nowrap">{student.profile?.class?.class_code || "N/A"}</td>
-              <td className="p-3 whitespace-nowrap">{student.profile?.class?.commencement_year || "N/A"}</td>
-              <td className="p-3 whitespace-nowrap">{student.profile?.class?.course || "N/A"}</td>
-              <td className="p-3 whitespace-nowrap">{student.profile?.class?.specialization || "N/A"}</td>
-              <td className="p-3 flex gap-3">
-                <Edit
-                  className="text-blue-500 cursor-pointer"
-                  onClick={() => handleEditStudent(student)}
-                />
-                <Trash
-                  className="text-red-500 cursor-pointer"
-                  onClick={() => confirmDeleteStudent(student)}
-                />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {showFilters && (
+        <div className="bg-gray-50 p-4 rounded-lg shadow-md mb-4 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+          {/* Existing and new filter inputs go here */}
+          <input
+            type="text"
+            placeholder="Filter by Name"
+            value={filters.name}
+            onChange={(e) => setFilters({ ...filters, name: e.target.value })}
+            className="input-primary"
+          />
+          <input
+            type="text"
+            placeholder="Filter by Email"
+            value={filters.email}
+            onChange={(e) => setFilters({ ...filters, email: e.target.value })}
+            className="input-primary"
+          />
+          <input
+            type="text"
+            placeholder="Filter by SAP ID"
+            value={filters.sap_id}
+            onChange={(e) => setFilters({ ...filters, sap_id: e.target.value })}
+            className="input-primary"
+          />
+          <input
+            type="text"
+            placeholder="Filter by Course"
+            value={filters.course}
+            onChange={(e) => setFilters({ ...filters, course: e.target.value })}
+            className="input-primary"
+          />
+          <input
+            type="text"
+            placeholder="Filter by Specialization"
+            value={filters.specialization}
+            onChange={(e) =>
+              setFilters({ ...filters, specialization: e.target.value })
+            }
+            className="input-primary"
+          />
+          <input
+            type="text"
+            placeholder="Filter by Reg ID"
+            value={filters.reg_id}
+            onChange={(e) => setFilters({ ...filters, reg_id: e.target.value })}
+            className="input-primary"
+          />
+          <input
+            type="text"
+            placeholder="Filter by Class Code"
+            value={filters.class_code}
+            onChange={(e) =>
+              setFilters({ ...filters, class_code: e.target.value })
+            }
+            className="input-primary"
+          />
+          <input
+            type="text"
+            placeholder="Filter by Year"
+            value={filters.year}
+            onChange={(e) => setFilters({ ...filters, year: e.target.value })}
+            className="input-primary"
+          />
+          <button
+            onClick={clearFilters}
+            className="btn-secondary flex items-center"
+          >
+            <XCircle className="h-5 w-5 mr-2" /> Clear Filters
+          </button>
+        </div>
+      )}
+
+      <div className="bg-white p-6 rounded-lg shadow-md mt-4 overflow-x-auto">
+        <h3 className="text-lg font-semibold mb-2">All Students</h3>
+        {students.length === 0 ? (
+          <p className="text-gray-500 text-center py-4">No students present.</p> // Shown when there are no students
+        ) : filteredStudents.length === 0 ? (
+          <p className="text-gray-500 text-center py-4">
+            No matching students found.
+          </p> // Shown when filters return no results
+        ) : (
+          <div className="w-full overflow-x-auto">
+            <table className="min-w-full border-collapse">
+              <thead className="bg-gray-100">
+                <tr>
+                  {[
+                    "Name",
+                    "Email",
+                    "Reg ID",
+                    "SAP ID",
+                    "Class Code",
+                    "Commencement Year",
+                    "Course",
+                    "Specialization",
+                    "Actions",
+                  ].map((header) => (
+                    <th
+                      key={header}
+                      className="p-3 text-left text-sm font-bold text-gray-800 md:whitespace-normal"
+                    >
+                      {header}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredStudents.map((student) => (
+                  <tr
+                    key={student._id}
+                    className="border-t odd:bg-gray-50 hover:bg-gray-100"
+                  >
+                    <td className="p-3 whitespace-nowrap">{student.name}</td>
+                    <td className="p-3 whitespace-nowrap">{student.email}</td>
+                    <td className="p-3 whitespace-nowrap">
+                      {student.profile?.reg_id || "N/A"}
+                    </td>
+                    <td className="p-3 whitespace-nowrap">
+                      {student.profile?.sap_id || "N/A"}
+                    </td>
+                    <td className="p-3 whitespace-nowrap">
+                      {student.profile?.class?.class_code || "N/A"}
+                    </td>
+                    <td className="p-3 whitespace-nowrap">
+                      {student.profile?.class?.commencement_year || "N/A"}
+                    </td>
+                    <td className="p-3 whitespace-nowrap">
+                      {student.profile?.class?.course || "N/A"}
+                    </td>
+                    <td className="p-3 whitespace-nowrap">
+                      {student.profile?.class?.specialization || "N/A"}
+                    </td>
+                    <td className="p-3 flex gap-3">
+                      <Edit
+                        className="text-blue-500 cursor-pointer"
+                        onClick={() => handleEditStudent(student)}
+                      />
+                      <Trash
+                        className="text-red-500 cursor-pointer"
+                        onClick={() => confirmDeleteStudent(student)}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
-  )}
-</div>
-
-
-</div>
   );
-
 }

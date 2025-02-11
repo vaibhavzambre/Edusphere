@@ -1,9 +1,11 @@
+// File: src/context/AuthContext.tsx
+
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 
 interface AuthContextType {
   user: any;
   login: (token: string) => void;
-  logout: () => void;
+  logout: (sessionExpired?: boolean) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -11,43 +13,73 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<any>(null);
 
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-    console.log("Checking localStorage Token:", token); 
+  // Logout function with an optional flag for session expiration
+  const logout = (sessionExpired = false) => {
+    console.log("Logging out...");
+    localStorage.removeItem("token");
+    setUser(null);
+    if (sessionExpired) {
+      // Redirect to login with a query parameter to indicate session expiration
+      window.location.href = "/login?sessionExpired=true";
+    } else {
+      window.location.href = "/login";
+    }
+  };
 
+  // Function to check token expiration
+  const checkTokenExpiration = () => {
+    const token = localStorage.getItem("token");
     if (token) {
       try {
-        const decodedUser = JSON.parse(atob(token.split(".")[1])); // Decode JWT
-        console.log("Decoded User Data:", decodedUser); 
-        setUser({ token, ...decodedUser });
+        const decoded = JSON.parse(atob(token.split(".")[1]));
+        // decoded.exp is in seconds; Date.now() returns milliseconds
+        if (decoded.exp < Date.now() / 1000) {
+          console.log("Token has expired");
+          logout(true);
+        }
+      } catch (error) {
+        console.error("Error checking token expiration:", error);
+        logout(true);
+      }
+    }
+  };
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    console.log("Checking localStorage token:", token);
+    if (token) {
+      try {
+        const decodedUser = JSON.parse(atob(token.split(".")[1]));
+        if (decodedUser.exp < Date.now() / 1000) {
+          console.log("Token is expired on initial check");
+          logout(true);
+        } else {
+          setUser({ token, ...decodedUser });
+        }
       } catch (error) {
         console.error("Error decoding token:", error);
         localStorage.removeItem("token");
         setUser(null);
       }
     }
+    // Check every minute whether the token has expired.
+    const interval = setInterval(checkTokenExpiration, 60000);
+    return () => clearInterval(interval);
   }, []);
 
   const login = (token: string) => {
     try {
-      console.log("Login Successful, Storing Token:", token); 
-      const decodedUser = JSON.parse(atob(token.split(".")[1])); // Decode JWT
+      console.log("Login successful, storing token:", token);
+      const decodedUser = JSON.parse(atob(token.split(".")[1]));
       localStorage.setItem("token", token);
       setUser({ token, ...decodedUser });
       window.location.href = "/"; // Redirect after login
     } catch (error) {
-      console.error("Login Error:", error);
+      console.error("Login error:", error);
     }
   };
 
-  const logout = () => {
-    console.log("Logging out..."); 
-    localStorage.removeItem("token");
-    setUser(null);
-    window.location.href = "/login"; // Redirect after logout
-  };
-
-  console.log("AuthContext user state:", user); 
+  console.log("AuthContext user state:", user);
 
   return <AuthContext.Provider value={{ user, login, logout }}>{children}</AuthContext.Provider>;
 };
