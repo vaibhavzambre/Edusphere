@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Edit, Trash } from "lucide-react";
+import { Edit, Trash, XCircle } from "lucide-react";
 
 export default function ManageSubjects() {
   const [subjects, setSubjects] = useState<any[]>([]);
@@ -27,6 +27,63 @@ export default function ManageSubjects() {
     class: "",
     teacher: "",
   });
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState({
+    subject_name: "",
+    subject_code: "",
+    max_no_of_hours: "",
+    hours_conducted: "",
+    semester: "",
+    reg_id: "", // Stored as a number in DB
+    class_code: "", // Stored as a number in DB
+    commencement_year: "", // Stored as a number in DB
+    course: "",
+    specialization: "",
+    teacher: "",
+  });
+
+
+
+
+  const filteredSubjects = subjects.filter((subject) => {
+    return (
+      (!filters.subject_name || subject.subject_name?.toLowerCase().includes(filters.subject_name.toLowerCase())) &&
+      (!filters.subject_code || subject.subject_code?.toLowerCase().includes(filters.subject_code.toLowerCase())) &&
+      (!filters.max_no_of_hours || subject.max_no_of_hours?.toString().includes(filters.max_no_of_hours)) &&
+      (!filters.hours_conducted || subject.hours_conducted?.toString().includes(filters.hours_conducted)) &&
+      (!filters.semester || subject.semester?.toString().includes(filters.semester)) &&
+
+      // 🔹 Fix for Class Code & Commencement Year (Convert filter values to numbers before comparing)
+      (!filters.class_code || Number(subject.class_code) === Number(filters.class_code)) &&
+      (!filters.commencement_year || Number(subject.commencement_year) === Number(filters.commencement_year)) &&
+
+      (!filters.course || subject.class?.course?.toLowerCase().includes(filters.course.toLowerCase())) &&
+      (!filters.specialization || subject.class?.specialization?.toLowerCase().includes(filters.specialization.toLowerCase())) &&
+      (!filters.teacher || subject.teacher?.name?.toLowerCase().includes(filters.teacher.toLowerCase()))
+    );
+  });
+
+
+
+  const clearFilters = () => {
+    setFilters({
+      subject_name: "",
+      subject_code: "",
+      max_no_of_hours: "",
+      hours_conducted: "",
+      semester: "",
+      reg_id: "",
+      class_code: "",
+      commencement_year: "",
+      course: "",
+      specialization: "",
+      teacher: "",
+    });
+  };
+
+
+
+
 
   useEffect(() => {
     fetchSubjects();
@@ -288,10 +345,93 @@ export default function ManageSubjects() {
 
   return (
     <div className="p-6">
-      <h2 className="text-2xl font-bold mb-4">Manage Subjects</h2>
-      <button onClick={() => setShowModal(true)} className="btn-primary">
-        + Add Subject
-      </button>
+
+      {/* Header with Filters & Add Button */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+        <h2 className="text-2xl font-bold">Manage Subjects</h2>
+        <div className="w-full md:w-auto flex flex-col md:flex-row gap-3">
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className="px-4 py-2 btn-secondary text-black border rounded-lg hover:bg-gray-100 transition-colors"
+          >
+            {showFilters ? "Hide Filters" : "Show Filters"}
+          </button>
+          <button
+            onClick={() => setShowModal(true)}
+            className="w-full md:w-auto px-4 py-2 btn-primary text-white rounded-lg hover:bg-indigo-800 transition-colors"
+          >
+            + Add Subject
+          </button>
+        </div>
+      </div>
+
+
+      {/* Filters UI */}
+      {showFilters && (
+        <div className="bg-gray-50 p-4 rounded-lg shadow-md mb-4 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          <input
+            type="text"
+            placeholder="Filter by Subject Name"
+            value={filters.subject_name}
+            onChange={(e) => setFilters({ ...filters, subject_name: e.target.value })}
+            className="input-primary"
+          />
+          <input
+            type="text"
+            placeholder="Filter by Subject Code"
+            value={filters.subject_code}
+            onChange={(e) => setFilters({ ...filters, subject_code: e.target.value })}
+            className="input-primary"
+          />
+          <input
+            type="number"
+            placeholder="Filter by Max Hours"
+            value={filters.max_no_of_hours}
+            onChange={(e) => setFilters({ ...filters, max_no_of_hours: e.target.value })}
+            className="input-primary"
+          />
+          <input
+            type="number"
+            placeholder="Filter by Hours Conducted"
+            value={filters.hours_conducted}
+            onChange={(e) => setFilters({ ...filters, hours_conducted: e.target.value })}
+            className="input-primary"
+          />
+          <input
+            type="text"
+            placeholder="Filter by Semester"
+            value={filters.semester}
+            onChange={(e) => setFilters({ ...filters, semester: e.target.value })}
+            className="input-primary"
+          />
+          <input
+            type="number"
+            placeholder="Filter by Class Code"
+            value={filters.class_code}
+            onChange={(e) => setFilters({ ...filters, class_code: e.target.value ? Number(e.target.value) : "" })}
+            className="input-primary"
+          />
+
+          <input
+            type="number"
+            placeholder="Filter by Commencement Year"
+            value={filters.commencement_year}
+            onChange={(e) => setFilters({ ...filters, commencement_year: e.target.value })}
+            className="input-primary"
+          />
+          <input
+            type="text"
+            placeholder="Filter by Teacher"
+            value={filters.teacher}
+            onChange={(e) => setFilters({ ...filters, teacher: e.target.value })}
+            className="input-primary"
+          />
+          <button onClick={clearFilters} className="btn-secondary flex items-center">
+            <XCircle className="h-5 w-5 mr-2" /> Clear Filters
+          </button>
+        </div>
+      )}
+
 
       {showModal && (
         <div className="fixed inset-0 flex items-center justify-center bg-gray-800 bg-opacity-50">
@@ -600,50 +740,62 @@ export default function ManageSubjects() {
       {/* Table with Subject Data */}
       <div className="bg-white p-6 rounded-lg shadow-md mt-4">
         <h3 className="text-lg font-semibold mb-2">All Subjects</h3>
-        {Array.isArray(subjects) && subjects.length > 0 ? (
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="bg-gray-100">
-                <th className="p-2 text-left">Subject Name</th>
-                <th className="p-2 text-left">Subject Code</th>
-                <th className="p-2 text-left">Description</th>
-                <th className="p-2 text-left">Max Hours</th>
-                <th className="p-2 text-left">Hours Conducted</th>
-                <th className="p-2 text-left">Semester</th>
-                <th className="p-2 text-left">Class Code</th>
-                <th className="p-2 text-left">Commencement Year</th>
-                <th className="p-2 text-left">Teacher</th>
-                <th className="p-2 text-left">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {subjects.map((subject) => (
-                <tr key={subject._id} className="border-t">
-                  <td className="p-2">{subject.subject_name}</td>
-                  <td className="p-2">{subject.subject_code}</td>
-                  <td className="p-2">{subject.description}</td>
-                  <td className="p-2">{subject.max_no_of_hours}</td>
-                  <td className="p-2">{subject.hours_conducted}</td>
-                  <td className="p-2">{subject.semester}</td>
-                  <td className="p-2">{subject.class_code}</td>
-                  <td className="p-2">{subject.commencement_year}</td>
-                  <td className="p-2">
-                    {subject.teacher
-                      ? `${subject.teacher.name} (${subject.teacher.email})`
-                      : "N/A"}
-                  </td>
-                  <td className="p-2 flex space-x-3">
-                    <Edit className="text-blue-500 cursor-pointer" onClick={() => handleEditSubject(subject)} />
-                    <Trash className="text-red-500 cursor-pointer" onClick={() => confirmDeleteSubject(subject)} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {filteredSubjects.length === 0 ? (
+          <p className="text-gray-500">No subjects found.</p>
         ) : (
-          <p className="text-gray-500 text-center py-4">No subjects found.</p>
+          <div className="w-full overflow-x-auto">
+            <table className="min-w-full border-collapse">
+              <thead className="bg-gray-100">
+                <tr >
+                  {[
+                    "Subject Name",
+                    "Subject Code",
+                    "Description",
+                    "Max Hours",
+                    "Hours Conducted",
+                    "Semester",
+                    "Class Code",
+                    "Commencement Year",
+                    "Teacher",
+                    "Actions",
+                  ].map((header) => (
+                    <th
+                      key={header}
+                      className="p-3 text-left text-sm   text-gray-700 md:whitespace-normal"
+                    >
+                      {header}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredSubjects.map((subject) => (
+                  <tr key={subject._id} className="border-t odd:bg-gray-50 hover:bg-gray-100"
+                  >
+                    <td className="p-3 break-words md:whitespace-normal">{subject.subject_name}</td>
+                    <td className="p-3 break-words md:whitespace-normal">{subject.subject_code}</td>
+                    <td className="p-3 break-words md:whitespace-normal">{subject.description}</td>
+                    <td className="p-3">{subject.max_no_of_hours}</td>
+                    <td className="p-3">{subject.hours_conducted}</td>
+                    <td className="p-3">{subject.semester}</td>
+                    <td className="p-3">{subject.class_code}</td>
+                    <td className="p-3">{subject.commencement_year}</td>
+                    <td className="p-3">
+                      {subject.teacher ? `${subject.teacher.name} (${subject.teacher.email})` : "N/A"}
+                    </td>
+                    <td className="p-3 flex gap-3">
+                      <Edit className="text-blue-500 cursor-pointer" onClick={() => handleEditSubject(subject)} />
+                      <Trash className="text-red-500 cursor-pointer" onClick={() => confirmDeleteSubject(subject)} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
+
+
     </div>
   );
 }
