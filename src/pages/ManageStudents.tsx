@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
-import { Trash, Edit } from "lucide-react";
+import { Trash, Edit, XCircle } from "lucide-react";
 
 interface NewStudent {
   name: string;
@@ -29,7 +29,40 @@ export default function ManageStudents() {
     class_code: "",
     commencement_year: "",
   });
-
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState({
+    name: "",
+    email: "",
+    sap_id: "",
+    course: "",
+    specialization: "",
+    year: "",
+  });
+  
+  // Filter students based on multiple fields
+  const filteredStudents = students.filter((student) => {
+    return (
+      (!filters.name || student.name?.toLowerCase().includes(filters.name.toLowerCase())) &&
+      (!filters.email || student.email?.toLowerCase().includes(filters.email.toLowerCase())) &&
+      (!filters.sap_id || student.profile?.sap_id?.toString().includes(filters.sap_id)) &&
+      (!filters.course || student.profile?.course?.toLowerCase().includes(filters.course.toLowerCase())) &&
+      (!filters.specialization ||
+        student.profile?.specialization?.toLowerCase().includes(filters.specialization.toLowerCase())) &&
+      (!filters.year || student.profile?.year?.toString().includes(filters.year))
+    );
+  });
+  
+  const clearFilters = () => {
+    setFilters({
+      name: "",
+      email: "",
+      sap_id: "",
+      course: "",
+      specialization: "",
+      year: "",
+    });
+  };
+  
   useEffect(() => {
     fetchStudents();
     fetchClasses();
@@ -211,10 +244,10 @@ export default function ManageStudents() {
 
   return (
     <div className="p-6">
-      <h2 className="text-2xl font-bold mb-4">Manage Students</h2>
+      {/* <h2 className="text-2xl font-bold mb-4">Manage Students</h2>
       <button onClick={() => setShowModal(true)} className="btn-primary">
         + Add Student
-      </button>
+      </button> */}
 
       {/* Add Student Modal */}
       {showModal && (
@@ -439,48 +472,142 @@ export default function ManageStudents() {
           </div>
         </div>
       )}
+      {/* Header with Filters & Add Button */}
+<div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+  <h2 className="text-2xl font-bold">Manage Students</h2>
+  <div className="w-full md:w-auto flex flex-col md:flex-row gap-3">
+    <button
+      onClick={() => setShowFilters(!showFilters)}
+      className="px-4 py-2 btn-secondary text-black border rounded-lg hover:bg-gray-100 transition-colors"
+    >
+      {showFilters ? "Hide Filters" : "Show Filters"}
+    </button>
+    <button
+      onClick={() => setShowModal(true)}
+      className="w-full md:w-auto px-4 py-2 btn-primary text-white rounded-lg hover:bg-indigo-800 transition-colors"
+    >
+      + Add Student
+    </button>
+  </div>
+</div>
+
+{/* Filters UI */}
+{showFilters && (
+  <div className="bg-gray-50 p-4 rounded-lg shadow-md mb-4 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+    <input
+      type="text"
+      placeholder="Filter by Name"
+      value={filters.name}
+      onChange={(e) => setFilters({ ...filters, name: e.target.value })}
+      className="input-primary"
+    />
+    <input
+      type="text"
+      placeholder="Filter by Email"
+      value={filters.email}
+      onChange={(e) => setFilters({ ...filters, email: e.target.value })}
+      className="input-primary"
+    />
+    <input
+      type="text"
+      placeholder="Filter by SAP ID"
+      value={filters.sap_id}
+      onChange={(e) => setFilters({ ...filters, sap_id: e.target.value })}
+      className="input-primary"
+    />
+    <input
+      type="text"
+      placeholder="Filter by Course"
+      value={filters.course}
+      onChange={(e) => setFilters({ ...filters, course: e.target.value })}
+      className="input-primary"
+    />
+    <input
+      type="text"
+      placeholder="Filter by Specialization"
+      value={filters.specialization}
+      onChange={(e) => setFilters({ ...filters, specialization: e.target.value })}
+      className="input-primary"
+    />
+    <input
+      type="text"
+      placeholder="Filter by Year"
+      value={filters.year}
+      onChange={(e) => setFilters({ ...filters, year: e.target.value })}
+      className="input-primary"
+    />
+    <button onClick={clearFilters} className="btn-secondary flex items-center">
+      <XCircle className="h-5 w-5 mr-2" /> Clear Filters
+    </button>
+  </div>
+)}
 
       {/* List of Students */}
-      <div className="bg-white p-6 rounded-lg shadow-md mt-4">
-        <h3 className="text-lg font-semibold mb-2">All Students</h3>
-        {students.length === 0 ? (
-          <p className="text-gray-500">No students found.</p>
-        ) : (
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="bg-gray-100">
-                <th className="p-2 text-left">Name</th>
-                <th className="p-2 text-left">Email</th>
-                <th className="p-2 text-left">Reg ID</th>
-                <th className="p-2 text-left">SAP ID</th>
-                <th className="p-2 text-left">Class Code</th>
-                <th className="p-2 text-left">Commencement Year</th>
-                <th className="p-2 text-left">Course</th>
-                <th className="p-2 text-left">Specialization</th>
-                <th className="p-2 text-left">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {students.map((student) => (
-                <tr key={student._id} className="border-t">
-                  <td className="p-2">{student.name}</td>
-                  <td className="p-2">{student.email}</td>
-                  <td className="p-2">{student.profile?.reg_id || "N/A"}</td>
-                  <td className="p-2">{student.profile?.sap_id || "N/A"}</td>
-                  <td className="p-2">{student.profile?.class?.class_code || "N/A"}</td>
-                  <td className="p-2">{student.profile?.class?.commencement_year || "N/A"}</td>
-                  <td className="p-2">{student.profile?.class?.course || "N/A"}</td>
-                  <td className="p-2">{student.profile?.class?.specialization || "N/A"}</td>
-                  <td className="p-2 flex space-x-3">
-                    <Edit className="text-blue-500 cursor-pointer" onClick={() => handleEditStudent(student)} />
-                    <Trash className="text-red-500 cursor-pointer" onClick={() => confirmDeleteStudent(student)} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+  
+{/* List of Students */}
+<div className="bg-white p-6 rounded-lg shadow-md mt-4 overflow-x-auto">
+  <h3 className="text-lg font-semibold mb-2">All Students</h3>
+  {students.length === 0 ? (
+    <p className="text-gray-500">No students found.</p>
+  ) : (
+    <div className="w-full overflow-x-auto">
+      <table className="min-w-full border-collapse">
+        <thead className="bg-gray-100">
+          <tr>
+            {[
+              "Name",
+              "Email",
+              "Reg ID",
+              "SAP ID",
+              "Class Code",
+              "Commencement Year",
+              "Course",
+              "Specialization",
+              "Actions",
+            ].map((header) => (
+              <th
+                key={header}
+                className="p-3 text-left text-sm font-semibold text-gray-600 whitespace-nowrap"
+              >
+                {header}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {filteredStudents.map((student) => (
+            <tr
+              key={student._id}
+              className="border-t odd:bg-gray-50 hover:bg-gray-100"
+            >
+              <td className="p-3 whitespace-nowrap">{student.name}</td>
+              <td className="p-3 whitespace-nowrap">{student.email}</td>
+              <td className="p-3 whitespace-nowrap">{student.profile?.reg_id || "N/A"}</td>
+              <td className="p-3 whitespace-nowrap">{student.profile?.sap_id || "N/A"}</td>
+              <td className="p-3 whitespace-nowrap">{student.profile?.class?.class_code || "N/A"}</td>
+              <td className="p-3 whitespace-nowrap">{student.profile?.class?.commencement_year || "N/A"}</td>
+              <td className="p-3 whitespace-nowrap">{student.profile?.class?.course || "N/A"}</td>
+              <td className="p-3 whitespace-nowrap">{student.profile?.class?.specialization || "N/A"}</td>
+              <td className="p-3 flex gap-3">
+                <Edit
+                  className="text-blue-500 cursor-pointer"
+                  onClick={() => handleEditStudent(student)}
+                />
+                <Trash
+                  className="text-red-500 cursor-pointer"
+                  onClick={() => confirmDeleteStudent(student)}
+                />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
+  )}
+</div>
+
+
+</div>
   );
+
 }
