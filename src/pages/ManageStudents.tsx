@@ -34,6 +34,8 @@ export default function ManageStudents() {
     name: "",
     email: "",
     sap_id: "",
+    reg_id: "",       // Added
+    class_code: "",   // Added
     course: "",
     specialization: "",
     year: "",
@@ -45,10 +47,14 @@ export default function ManageStudents() {
       (!filters.name || student.name?.toLowerCase().includes(filters.name.toLowerCase())) &&
       (!filters.email || student.email?.toLowerCase().includes(filters.email.toLowerCase())) &&
       (!filters.sap_id || student.profile?.sap_id?.toString().includes(filters.sap_id)) &&
-      (!filters.course || student.profile?.course?.toLowerCase().includes(filters.course.toLowerCase())) &&
-      (!filters.specialization ||
-        student.profile?.specialization?.toLowerCase().includes(filters.specialization.toLowerCase())) &&
-      (!filters.year || student.profile?.year?.toString().includes(filters.year))
+      // Add Reg ID filter
+      (!filters.reg_id || student.profile?.reg_id?.toString().includes(filters.reg_id)) &&
+      // Add Class Code filter
+      (!filters.class_code || student.profile.class?.class_code?.toString().includes(filters.class_code)) &&
+      // Correct course, specialization, and year paths
+      (!filters.course || student.profile.class?.course?.toLowerCase().includes(filters.course.toLowerCase())) &&
+      (!filters.specialization || student.profile.class?.specialization?.toLowerCase().includes(filters.specialization.toLowerCase())) &&
+      (!filters.year || student.profile.class?.commencement_year?.toString().includes(filters.year))
     );
   });
   
@@ -57,6 +63,8 @@ export default function ManageStudents() {
       name: "",
       email: "",
       sap_id: "",
+      reg_id: "",      // Added
+      class_code: "",  // Added
       course: "",
       specialization: "",
       year: "",
@@ -285,6 +293,8 @@ export default function ManageStudents() {
               maxLength={5}
               inputMode="numeric"
             />
+            {/* Inside the Filters UI div */}
+
             {/* Class Code Dropdown */}
             <select
               className="input-primary w-full mb-2"
@@ -493,7 +503,8 @@ export default function ManageStudents() {
 
 {/* Filters UI */}
 {showFilters && (
-  <div className="bg-gray-50 p-4 rounded-lg shadow-md mb-4 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+  <div className="bg-gray-50 p-4 rounded-lg shadow-md mb-4 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+  {/* Existing and new filter inputs go here */}
     <input
       type="text"
       placeholder="Filter by Name"
@@ -530,6 +541,20 @@ export default function ManageStudents() {
       className="input-primary"
     />
     <input
+  type="text"
+  placeholder="Filter by Reg ID"
+  value={filters.reg_id}
+  onChange={(e) => setFilters({ ...filters, reg_id: e.target.value })}
+  className="input-primary"
+/>
+<input
+  type="text"
+  placeholder="Filter by Class Code"
+  value={filters.class_code}
+  onChange={(e) => setFilters({ ...filters, class_code: e.target.value })}
+  className="input-primary"
+/>
+    <input
       type="text"
       placeholder="Filter by Year"
       value={filters.year}
@@ -548,8 +573,10 @@ export default function ManageStudents() {
 <div className="bg-white p-6 rounded-lg shadow-md mt-4 overflow-x-auto">
   <h3 className="text-lg font-semibold mb-2">All Students</h3>
   {students.length === 0 ? (
-    <p className="text-gray-500">No students found.</p>
-  ) : (
+    <p className="text-gray-500 text-center py-4">No students present.</p> // Shown when there are no students
+  ) : filteredStudents.length === 0 ? (
+    <p className="text-gray-500 text-center py-4">No matching students found.</p> // Shown when filters return no results
+  ) :  (
     <div className="w-full overflow-x-auto">
       <table className="min-w-full border-collapse">
         <thead className="bg-gray-100">
@@ -567,7 +594,7 @@ export default function ManageStudents() {
             ].map((header) => (
               <th
                 key={header}
-                className="p-3 text-left text-sm font-semibold text-gray-600 whitespace-nowrap"
+                className="p-3 text-left text-sm font-bold text-gray-800 md:whitespace-normal"
               >
                 {header}
               </th>
