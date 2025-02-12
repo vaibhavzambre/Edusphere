@@ -19,6 +19,7 @@ import ManageSubjects from "./pages/ManageSubjects";
 import ManageClasses from "./pages/ManageClasses";
 import TeacherClasses from "./pages/TeacherClasses";
 import MySubjects from "./pages/MySubjects";
+import AnnouncementsPage from "./pages/AnnouncementsPage";
 
 const mockAttendance = [
   { course: "Web Development", date: "2024-03-10", status: "present" },
@@ -78,6 +79,19 @@ function App() {
                 element={
                   <ProtectedLayout>
                     <Attendance />
+                  </ProtectedLayout>
+                }
+              />
+            }
+          />
+          
+          <Route
+            path="/AnnouncementsPage"
+            element={
+              <ProtectedRoute
+                element={
+                  <ProtectedLayout>
+                    <AnnouncementsPage />
                   </ProtectedLayout>
                 }
               />

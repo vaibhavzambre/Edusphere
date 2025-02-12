@@ -7,6 +7,13 @@ import classRoutes from "./routes/classRoutes.js";
 import teacherRoutes from "./routes/teacherRoutes.js";
 import studentRoutes from "./routes/studentRoutes.js";
 import dotenv from "dotenv";
+import gridfsStream from "gridfs-stream";
+import announcementsRouter from "./routes/announcements.js";
+import attachments from "./routes/attachments.js";
+import "./utils/announcementCleanup.js"; // Enable automatic deletion of expired announcements
+
+const conn = mongoose.connection;
+let gfs;
 
 dotenv.config();
 const app = express();
@@ -29,10 +36,22 @@ mongoose
   .then(() => console.log("MongoDB Connected to main_db"))
   .catch((err) => console.error("MongoDB Connection Error:", err));
 
+  conn.once("open", () => {
+    gfs = gridfsStream(conn.db, mongoose.mongo);
+    gfs.collection("uploads"); // set collection name to 'uploads'
+    console.log("GridFS initialized");
+  });
+
+  app.use("/uploads", express.static("uploads"));
+
+  app.use("/api/attachments",attachments);
+
 app.use("/api/auth", authRoutes);
 app.use("/api/subjects", subjectRoutes);
 app.use("/api/classes", classRoutes);
 app.use("/api/teacher", teacherRoutes);
 app.use("/api/student", studentRoutes);
+app.use("/api/announcements", announcementsRouter);
 
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+export { gfs };

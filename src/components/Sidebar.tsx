@@ -42,7 +42,7 @@ const Sidebar = () => {
         // Common for All Roles
 
     { icon: Home, label: "Dashboard", path: "/" },
-    { icon: Megaphone, label: "Announcements", path: "/announcements" },
+    { icon: Megaphone, label: "Announcements", path: "/AnnouncementsPage" },
     { icon: ClipboardList, label: "Attendance", path: "/attendance" },
     { icon: MessageSquare, label: "Messages", path: "/messages" },
    
