@@ -56,13 +56,42 @@ router.post("/", authMiddleware, checkAdmin, async (req, res) => {
   }
 });
 
-// GET all announcements (no filtering conditions)
 router.get("/", authMiddleware, async (req, res) => {
   try {
-    const announcements = await Announcement.find({})
+    const { role, classId } = req.user; // Get logged-in user's role and class
+    const currentTime = new Date();
+
+    let query = {};
+
+    if (role === "admin") {
+      // ✅ Admin sees all announcements
+      query = {};
+    } else if (role === "student") {
+      // ✅ Students see only relevant announcements
+      query = {
+        publishDate: { $lte: currentTime }, // Show only published announcements
+        $or: [
+          { type: "global" }, // ✅ Show global announcements
+          { type: "role", roles: "student" }, // ✅ Show role-based announcements for students
+          { type: "class", class: classId, classTarget: { $in: ["students", "both"] } }, // ✅ Show class-specific announcements for students
+        ],
+      };
+    } else if (role === "teacher") {
+      // ✅ Teachers see only relevant announcements
+      query = {
+        publishDate: { $lte: currentTime }, // Show only published announcements
+        $or: [
+          { type: "global" }, // ✅ Show global announcements
+          { type: "role", roles: "teacher" }, // ✅ Show role-based announcements for teachers
+          { type: "class", class: classId, classTarget: { $in: ["teachers", "both"] } }, // ✅ Show class-specific announcements for teachers
+        ],
+      };
+    }
+
+    // Fetch and populate relevant fields
+    const announcements = await Announcement.find(query)
       .populate("class")
-      .populate("createdBy", "name email")
-      .exec();
+      .populate("createdBy", "name email");
 
     res.status(200).json(announcements);
   } catch (error) {
@@ -70,6 +99,7 @@ router.get("/", authMiddleware, async (req, res) => {
     res.status(500).json({ message: "Error fetching announcements", error: error.message });
   }
 });
+
 
 // DELETE an announcement (admin only)
 router.delete("/:id", authMiddleware, checkAdmin, async (req, res) => {

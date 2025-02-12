@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useAuth } from "../context/AuthContext"; // Import Auth Context
 
-// Define interface for announcements
 interface Announcement {
   _id: string;
   title: string;
@@ -13,10 +11,9 @@ interface Announcement {
   createdAt: string;
 }
 
-const AnnouncementsStudent: React.FC = () => {
+const AnnouncementsTeacher: React.FC = () => {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const { user } = useAuth(); // Get logged-in student info
 
   useEffect(() => {
     fetchAnnouncements();
@@ -35,7 +32,7 @@ const AnnouncementsStudent: React.FC = () => {
       if (!response.ok) throw new Error("Failed to fetch announcements");
       const data = await response.json();
 
-      setAnnouncements(data); // No need to filter in frontend anymore
+      setAnnouncements(data); // No filtering in frontend, backend does it
       setLoading(false);
     } catch (error) {
       console.error("Error fetching announcements:", error);
@@ -45,7 +42,7 @@ const AnnouncementsStudent: React.FC = () => {
 
   return (
     <div className="p-5">
-      <h1 className="text-2xl font-bold mb-4">Student Announcements</h1>
+      <h1 className="text-2xl font-bold mb-4">Teacher Announcements</h1>
 
       {loading ? (
         <p>Loading announcements...</p>
@@ -79,4 +76,4 @@ const AnnouncementsStudent: React.FC = () => {
   );
 };
 
-export default AnnouncementsStudent;
+export default AnnouncementsTeacher;

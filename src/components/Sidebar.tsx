@@ -42,10 +42,9 @@ const Sidebar = () => {
         // Common for All Roles
 
     { icon: Home, label: "Dashboard", path: "/" },
-    { icon: Megaphone, label: "Announcements", path: "/AnnouncementsPage" },
     { icon: ClipboardList, label: "Attendance", path: "/attendance" },
     { icon: MessageSquare, label: "Messages", path: "/messages" },
-   
+
 
 
     // Student Pages (No changes from previous version)
@@ -53,8 +52,8 @@ const Sidebar = () => {
       ? [
           { icon: BookOpen, label: "Subjects", path: "/classes/subjects" },
           { icon: Briefcase, label: "Jobs", path: "/jobs" },
+          { icon: Megaphone, label: "Announcements", path: "/AnnouncementsStudent" },
           { icon: ClipboardCheck, label: "Assignment", path: "/assignments" },
-
         ]
       : []),
 
@@ -64,6 +63,7 @@ const Sidebar = () => {
           { icon: Layers, label: "Classes", path: "/classes" },
           { icon: BookOpen, label: "Subjects", path: "/classes/subjects" },
           { icon: ClipboardCheck, label: "Assignment", path: "/assignments" },
+          { icon: Megaphone, label: "Announcements", path: "/AnnouncementsTeacher" },
 
         ]
       : []),
@@ -71,6 +71,8 @@ const Sidebar = () => {
     // 🔹 Admin-Specific Pages
     ...(user?.role === "admin"
       ? [
+        { icon: Megaphone, label: "Announcements", path: "/AnnouncementsPage" },
+
           { icon: Users, label: "Manage Teachers", path: "/ManageTeachers" },
           { icon: Users, label: "Manage Students", path: "/ManageStudents" },
           { icon: BookOpen, label: "Manage Subjects", path: "/ManageSubjects" },

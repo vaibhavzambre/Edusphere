@@ -20,6 +20,8 @@ import ManageClasses from "./pages/ManageClasses";
 import TeacherClasses from "./pages/TeacherClasses";
 import MySubjects from "./pages/MySubjects";
 import AnnouncementsPage from "./pages/AnnouncementsPage";
+import AnnouncementsStudent from "./pages/AnnouncementsStudent";
+import AnnouncementsTeacher from "./pages/AnnouncementsTeacher";
 
 const mockAttendance = [
   { course: "Web Development", date: "2024-03-10", status: "present" },
@@ -92,6 +94,30 @@ function App() {
                 element={
                   <ProtectedLayout>
                     <AnnouncementsPage />
+                  </ProtectedLayout>
+                }
+              />
+            }
+          />
+          <Route
+            path="/AnnouncementsTeacher"
+            element={
+              <ProtectedRoute
+                element={
+                  <ProtectedLayout>
+                    <AnnouncementsTeacher />
+                  </ProtectedLayout>
+                }
+              />
+            }
+          />
+          <Route
+            path="/AnnouncementsStudent"
+            element={
+              <ProtectedRoute
+                element={
+                  <ProtectedLayout>
+                    <AnnouncementsStudent />
                   </ProtectedLayout>
                 }
               />
