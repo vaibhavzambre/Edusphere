@@ -23,7 +23,7 @@ const AnnouncementSchema = new mongoose.Schema(
     classTarget: [{ type: String, enum: ["students", "teachers", "both"] }],
 
     // For individual targeting.
-    targetUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+    targetUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }], // ✅ Stores selected students/teachers for individual-specific
 
     // Scheduling.
     publishDate: { type: Date, required: true },

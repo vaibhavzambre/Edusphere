@@ -2,11 +2,15 @@
 import express from "express";
 import Announcement from "../models/Announcement.js";
 import { authMiddleware, checkAdmin } from "../middleware/authMiddleware.js";
-import ClassModel from "../models/Class.js"; // <-- Import your Class model
+import UserModel from "../models/User.js"; // Import User model
+import mongoose from "mongoose";
 
 const router = express.Router();
 
-// Create an announcement (admin only)
+/**
+ * ✅ CREATE an Announcement (Admin Only)
+ * Supports: Global, Role-Specific, Class-Specific (Removed), Individual-Specific
+ */
 router.post("/", authMiddleware, checkAdmin, async (req, res) => {
   try {
     const {
@@ -14,38 +18,23 @@ router.post("/", authMiddleware, checkAdmin, async (req, res) => {
       content,
       type,
       roles,
-      class: classId, // Renames "class" to "classId"
-      classTarget,
-      targetUsers,
+      targetUsers, // Selected students & teachers
       publishDate,
       expiryDate,
       attachments,
     } = req.body;
 
-    // Build the announcement data object
     const announcementData = {
       title,
       content,
       type,
       roles,
-      class: classId, // reference to the Class document (if provided)
-      classTarget,
-      targetUsers,
+      targetUsers: targetUsers || [], // Store user IDs directly
       publishDate,
       expiryDate,
       attachments,
       createdBy: req.user.id,
     };
-
-    // If the announcement is class-specific, lookup the Class document
-    // and fill in the class_code and commencement_year fields.
-    if (type === "class" && classId) {
-      const classDoc = await ClassModel.findById(classId);
-      if (classDoc) {
-        announcementData.class_code = classDoc.class_code;
-        announcementData.commencement_year = classDoc.commencement_year;
-      }
-    }
 
     const announcement = new Announcement(announcementData);
     const saved = await announcement.save();
@@ -56,41 +45,31 @@ router.post("/", authMiddleware, checkAdmin, async (req, res) => {
   }
 });
 
+/**
+ * ✅ FETCH Announcements (For Students, Teachers & Admin)
+ */
 router.get("/", authMiddleware, async (req, res) => {
   try {
-    const { role, classId } = req.user; // Get logged-in user's role and class
+    const { role, id } = req.user; // Get logged-in user's role and ID
     const currentTime = new Date();
 
-    let query = {};
+    let query = { publishDate: { $lte: currentTime } };
 
     if (role === "admin") {
       // ✅ Admin sees all announcements
       query = {};
-    } else if (role === "student") {
-      // ✅ Students see only relevant announcements
-      query = {
-        publishDate: { $lte: currentTime }, // Show only published announcements
-        $or: [
-          { type: "global" }, // ✅ Show global announcements
-          { type: "role", roles: "student" }, // ✅ Show role-based announcements for students
-          { type: "class", class: classId, classTarget: { $in: ["students", "both"] } }, // ✅ Show class-specific announcements for students
-        ],
-      };
-    } else if (role === "teacher") {
-      // ✅ Teachers see only relevant announcements
-      query = {
-        publishDate: { $lte: currentTime }, // Show only published announcements
-        $or: [
-          { type: "global" }, // ✅ Show global announcements
-          { type: "role", roles: "teacher" }, // ✅ Show role-based announcements for teachers
-          { type: "class", class: classId, classTarget: { $in: ["teachers", "both"] } }, // ✅ Show class-specific announcements for teachers
-        ],
-      };
+    } else if (role === "student" || role === "teacher") {
+      // ✅ Students & Teachers see their specific announcements
+      query.$or = [
+        { type: "global" }, // Show global announcements
+        { type: "role", roles: role }, // Show role-based announcements
+        { type: "individual", targetUsers: id }, // Show individual-specific announcements
+      ];
     }
 
     // Fetch and populate relevant fields
     const announcements = await Announcement.find(query)
-      .populate("class")
+      .populate("targetUsers", "name email") // Populate names of selected users
       .populate("createdBy", "name email");
 
     res.status(200).json(announcements);
@@ -100,8 +79,57 @@ router.get("/", authMiddleware, async (req, res) => {
   }
 });
 
+/**
+ * ✅ UPDATE an Announcement (Admin Only)
+ * Now updates `targetUsers` correctly
+ */
+router.put("/:id", authMiddleware, checkAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      title,
+      content,
+      type,
+      roles,
+      targetUsers,
+      publishDate,
+      expiryDate,
+      attachments,
+    } = req.body;
 
-// DELETE an announcement (admin only)
+    let updateData = {
+      title,
+      content,
+      type,
+      roles,
+      targetUsers: targetUsers || [],
+      publishDate,
+      expiryDate,
+      attachments,
+    };
+
+    // Update the announcement
+    const updatedAnnouncement = await Announcement.findByIdAndUpdate(
+      id,
+      { $set: updateData },
+      { new: true }
+    ).populate("targetUsers", "name email")
+     .populate("createdBy", "name email");
+
+    if (!updatedAnnouncement) {
+      return res.status(404).json({ message: "Announcement not found" });
+    }
+
+    res.status(200).json(updatedAnnouncement);
+  } catch (error) {
+    console.error("Error updating announcement:", error);
+    res.status(500).json({ message: "Error updating announcement", error: error.message });
+  }
+});
+
+/**
+ * ✅ DELETE an Announcement (Admin Only)
+ */
 router.delete("/:id", authMiddleware, checkAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -116,96 +144,9 @@ router.delete("/:id", authMiddleware, checkAdmin, async (req, res) => {
   }
 });
 
-// UPDATE an announcement (admin only)
-// UPDATE an announcement (admin only)
-// UPDATE an announcement (admin only)
-// UPDATE an announcement (admin only)
-import mongoose from "mongoose";
-// ... other imports
-
-router.put("/:id", authMiddleware, checkAdmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const {
-      title,
-      content,
-      type,
-      roles,
-      class: classId, // received from the front-end as "class"
-      classTarget,
-      targetUsers,
-      publishDate,
-      expiryDate,
-      attachments,
-    } = req.body;
-
-    // Build the update object.
-    let updateData = {
-      title,
-      content,
-      type,
-      roles,
-      publishDate,
-      expiryDate,
-      attachments,
-      targetUsers,
-    };
-
-    if (type === "class") {
-      // Ensure a valid classId is provided.
-      if (!classId || classId.trim() === "") {
-        return res.status(400).json({
-          message:
-            "A class selection is required for class-specific announcements.",
-        });
-      }
-      // Look up the new class document using the provided classId.
-      const classDoc = await ClassModel.findById(classId);
-      if (!classDoc) {
-        return res.status(400).json({ message: "Invalid class selection" });
-      }
-      // Explicitly cast the classId to an ObjectId using 'new' and update the reference.
-      updateData = {
-        ...updateData,
-        class: new mongoose.Types.ObjectId(classId),
-        class_code: classDoc.class_code,
-        commencement_year: classDoc.commencement_year,
-        classTarget, // update classTarget as well if provided
-      };
-    } else {
-      // For non-class announcements, remove any class-related fields.
-      updateData = {
-        ...updateData,
-        class: undefined,
-        class_code: undefined,
-        commencement_year: undefined,
-        classTarget: undefined,
-      };
-    }
-
-    // Use $set to force updating the fields.
-    const updatedAnnouncement = await Announcement.findByIdAndUpdate(
-      id,
-      { $set: updateData },
-      { new: true }
-    )
-      .populate("class")
-      .populate("createdBy", "name email");
-
-    if (!updatedAnnouncement) {
-      return res.status(404).json({ message: "Announcement not found" });
-    }
-
-    res.status(200).json(updatedAnnouncement);
-  } catch (error) {
-    console.error("Error updating announcement:", error);
-    res
-      .status(500)
-      .json({ message: "Error updating announcement", error: error.message });
-  }
-});
-
-
+/**
+ * ✅ DELETE Expired Announcements (Admin Only)
+ */
 router.delete("/expired", authMiddleware, checkAdmin, async (req, res) => {
   try {
     const currentTime = new Date();

@@ -41,7 +41,7 @@ interface Announcement {
 interface AnnouncementFormData {
   title: string;
   content: string;
-  type: "global" | "role" | "class";
+  type: "global" | "role" | "class" | "individual";
   roles: string[];
   classId?: string;
   classTarget?: string[];
@@ -66,7 +66,114 @@ const AnnouncementsPage: React.FC = () => {
     attachments: [],
   });
   const [classes, setClasses] = useState<Class[]>([]);
+  
+  
+  const [students, setStudents] = useState<{ _id: string; name: string; email: string; sap_id: string }[]>([]);
+const [teachers, setTeachers] = useState<{ _id: string; name: string; email: string }[]>([]);    
+const [showStudentModal, setShowStudentModal] = useState(false);
+const [showTeacherModal, setShowTeacherModal] = useState(false);
 
+const [studentSearchFilter, setStudentSearchFilter] = useState("name");
+
+const [teacherSearchFilter, setTeacherSearchFilter] = useState("name");
+
+const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
+const [selectedTeachers, setSelectedTeachers] = useState<string[]>([]);
+const [showFilters, setShowFilters] = useState(false);
+const [studentNameSearch, setStudentNameSearch] = useState("");
+const [studentEmailSearch, setStudentEmailSearch] = useState("");
+const [studentSapIdSearch, setStudentSapIdSearch] = useState("");
+const [studentSearch, setStudentSearch] = useState("");
+const [searchBy, setSearchBy] = useState("name"); // Default filter is 'name'
+const [teacherSearch, setTeacherSearch] = useState("");
+const [searchByTeacher, setSearchByTeacher] = useState("name"); // Default search filter
+
+  useEffect(() => {
+    if (announcementFormData.type === "individual") {
+      fetchUsers();
+    }
+  }, [announcementFormData.type]);
+  
+  const fetchUsers = async () => {
+    try {
+      const token = localStorage.getItem("token");
+  
+      // Fetch Students
+      const studentResponse = await fetch("http://localhost:5001/api/users/students", {
+        method: "GET",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      });
+      if (!studentResponse.ok) throw new Error("Failed to fetch students");
+      const studentData = await studentResponse.json();
+      setStudents(studentData);
+  
+      // Fetch Teachers
+      const teacherResponse = await fetch("http://localhost:5001/api/users/teachers", {
+        method: "GET",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      });
+      if (!teacherResponse.ok) throw new Error("Failed to fetch teachers");
+      const teacherData = await teacherResponse.json();
+      setTeachers(teacherData);
+  
+    } catch (error) {
+      console.error("Error fetching users:", error);
+    }
+  };
+  
+
+
+  const toggleStudentSelection = (studentId: string) => {
+    setSelectedStudents((prev) =>
+      prev.includes(studentId) ? prev.filter((id) => id !== studentId) : [...prev, studentId]
+    );
+  };
+  
+  const toggleTeacherSelection = (teacherId: string) => {
+    setSelectedTeachers((prev) =>
+      prev.includes(teacherId) ? prev.filter((id) => id !== teacherId) : [...prev, teacherId]
+    );
+  };
+  const filteredStudents = students.filter((student) => {
+    if (!student) return false; // Prevent crashes
+    if (!studentSearch.trim()) return true; // Show all students when search is empty
+  
+    const searchValue = studentSearch.toLowerCase();
+  
+    switch (searchBy) {
+      case "name":
+        return student.name?.toLowerCase().includes(searchValue);
+      case "email":
+        return student.email?.toLowerCase().includes(searchValue);
+      case "sap_id":
+        return student.profile?.sap_id
+          ? student.profile.sap_id.toString().includes(searchValue)
+          : false;
+      default:
+        return true; // Show all students if filter type is invalid
+    }
+  });
+  
+  
+  
+  
+  const filteredTeachers = teachers.filter((teacher) => {
+    if (!teacher) return false; // Prevent crashes
+    if (!teacherSearch.trim()) return true; // Show all teachers when search is empty
+  
+    const searchValue = teacherSearch.toLowerCase();
+  
+    switch (searchByTeacher) {
+      case "name":
+        return teacher.name?.toLowerCase().includes(searchValue);
+      case "email":
+        return teacher.email?.toLowerCase().includes(searchValue);
+      default:
+        return true; // Show all teachers if no filter is selected
+    }
+  });
+  
+  
   useEffect(() => {
     fetchAnnouncements();
   }, []);
@@ -185,11 +292,11 @@ const AnnouncementsPage: React.FC = () => {
         ...rest,
         class: classId,
         publishDate: new Date(announcementFormData.publishDate).toISOString(),
-        expiryDate: announcementFormData.expiryDate
-          ? new Date(announcementFormData.expiryDate).toISOString()
-          : null,
+        expiryDate: announcementFormData.expiryDate ? new Date(announcementFormData.expiryDate).toISOString() : null,
         attachments: uploadedFiles,
+        targetUsers: [...selectedStudents, ...selectedTeachers], // Include selected users
       };
+      
   
       if (editingAnnouncement) {
         const response = await fetch(`http://localhost:5001/api/announcements/${editingAnnouncement._id}`, {
@@ -405,21 +512,23 @@ const AnnouncementsPage: React.FC = () => {
               <div>
                 <label className="block text-sm font-medium text-gray-700">Type:</label>
                 <select
-                  value={announcementFormData.type}
-                  onChange={(e) => {
-                    const newType = e.target.value as "global" | "role" | "class";
-                    setAnnouncementFormData({
-                      ...announcementFormData,
-                      type: newType,
-                      roles: newType === "global" ? ["teacher", "student"] : [],
-                    });
-                  }}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                >
-                  <option value="global">Global</option>
-                  <option value="role">Role-Specific</option>
-                  <option value="class">Class-Specific</option>
-                </select>
+                    value={announcementFormData.type}
+                    onChange={(e) => {
+                      const newType = e.target.value as "global" | "role" | "class" | "individual";
+                      setAnnouncementFormData({
+                        ...announcementFormData,
+                        type: newType,
+                        roles: newType === "global" ? ["teacher", "student"] : [],
+                        classTarget: newType === "class" ? ["students"] : [], // Default to students for class-specific
+                      });
+                    }}
+                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                  >
+                    <option value="global">Global</option>
+                    <option value="role">Role-Specific</option>
+                    <option value="class">Class-Specific</option>
+                    <option value="individual">Individual-Specific</option>
+                  </select>
               </div>
               {announcementFormData.type === "role" && (
                 <div className="space-y-2">
@@ -444,47 +553,227 @@ const AnnouncementsPage: React.FC = () => {
                 </div>
               )}
               {announcementFormData.type === "class" && (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Select Class:</label>
-                    <select
-                      value={announcementFormData.classId || ""}
-                      onChange={(e) =>
-                        setAnnouncementFormData({ ...announcementFormData, classId: e.target.value })
-                      }
-                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                    >
-                      <option value="">Select a class</option>
-                      {classes.map((cls) => (
-                        <option key={cls._id} value={cls._id}>
-                          {cls.class_code} - {cls.commencement_year} ({cls.specialization})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700">Target:</label>
-                    {["students", "teachers", "both"].map((target) => (
-                      <label key={target} className="flex items-center">
-                        <input
-                          type="checkbox"
-                          checked={announcementFormData.classTarget?.includes(target) || false}
-                          onChange={() =>
-                            setAnnouncementFormData({
-                              ...announcementFormData,
-                              classTarget: announcementFormData.classTarget?.includes(target)
-                                ? announcementFormData.classTarget.filter((t) => t !== target)
-                                : [...(announcementFormData.classTarget || []), target],
-                            })
-                          }
-                          className="mr-2"
-                        />
-                        {target.charAt(0).toUpperCase() + target.slice(1)}
-                      </label>
-                    ))}
-                  </div>
-                </>
-              )}
+  <div>
+    <label className="block text-sm font-medium text-gray-700">Select Class:</label>
+    <select
+      value={announcementFormData.classId || ""}
+      onChange={(e) =>
+        setAnnouncementFormData({ ...announcementFormData, classId: e.target.value })
+      }
+      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+    >
+      <option value="">Select a class</option>
+      {classes.map((cls) => (
+        <option key={cls._id} value={cls._id}>
+          {cls.class_code} - {cls.commencement_year} ({cls.specialization})
+        </option>
+      ))}
+    </select>
+  </div>
+)}
+{announcementFormData.type === "individual" && (
+  <div>
+    <p className="block text-sm font-medium text-gray-700">Select Recipients:</p>
+    
+    {/* Students Checkbox */}
+    <label className="flex items-center mt-2">
+      <input
+        type="checkbox"
+        checked={selectedStudents.length > 0}
+        onChange={() => setShowStudentModal(true)}
+        className="mr-2"
+      />
+      <span>Select Students</span>
+      <button
+        type="button"
+        onClick={() => setShowStudentModal(true)}
+        className="ml-4 px-2 py-1 bg-indigo-500 text-white rounded-md"
+      >
+        Choose Students
+      </button>
+    </label>
+
+    {/* Teachers Checkbox */}
+    <label className="flex items-center mt-2">
+      <input
+        type="checkbox"
+        checked={selectedTeachers.length > 0}
+        onChange={() => setShowTeacherModal(true)}
+        className="mr-2"
+      />
+      <span>Select Teachers</span>
+      <button
+        type="button"
+        onClick={() => setShowTeacherModal(true)}
+        className="ml-4 px-2 py-1 bg-indigo-500 text-white rounded-md"
+      >
+        Choose Teachers
+      </button>
+    </label>
+  </div>
+)}
+{showStudentModal && (
+  <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
+    <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-lg relative">
+      <button 
+        onClick={() => setShowStudentModal(false)} 
+        className="absolute top-2 right-3 text-gray-600 hover:text-gray-900 text-xl"
+      >
+        ❌
+      </button>
+      <h2 className="text-lg font-semibold mb-2">Select Students</h2>
+
+      {/* Show Filters Button */}
+<button
+  onClick={() => setShowFilters((prev) => !prev)}
+  className={`px-3 py-2 rounded-md w-full mb-3 transition-colors 
+    ${showFilters ? "border border-indigo-500 bg-white text-indigo-600" : "bg-gray-400 text-white hover:bg-gray-600"}`}
+>
+  {showFilters ? "Hide Filters" : "Show Filters"}
+</button>
+
+
+      {/* Filter Inputs */}
+      {showFilters && (
+    <div className="space-y-2 mb-3">
+    <input
+      type="text"
+      placeholder="Search by Name"
+      className="border p-2 rounded w-full"
+      value={searchBy === "name" ? studentSearch : ""}
+      onChange={(e) => {
+        setSearchBy("name");
+        setStudentSearch(e.target.value);
+      }}
+    />
+    <input
+      type="text"
+      placeholder="Search by Email"
+      className="border p-2 rounded w-full"
+      value={searchBy === "email" ? studentSearch : ""}
+      onChange={(e) => {
+        setSearchBy("email");
+        setStudentSearch(e.target.value);
+      }}
+    />
+    <input
+      type="text"
+      placeholder="Search by SAP ID"
+      className="border p-2 rounded w-full"
+      value={searchBy === "sap_id" ? studentSearch : ""}
+      onChange={(e) => {
+        setSearchBy("sap_id");
+        setStudentSearch(e.target.value);
+      }}
+    />
+  </div>
+      )}
+
+      {/* Filtered Student List */}
+      <ul className="max-h-60 overflow-y-auto border rounded">
+        {filteredStudents.map((student) => (
+          <li key={student._id} className="p-2 border-b flex justify-between items-center">
+<span>
+  {student.name} ({student.email}) - {student.profile?.sap_id ?? "N/A"}
+</span>            <input
+              type="checkbox"
+              checked={selectedStudents.includes(student._id)}
+              onChange={() => toggleStudentSelection(student._id)}
+            />
+          </li>
+        ))}
+      </ul>
+
+      <button 
+        onClick={() => setShowStudentModal(false)} 
+        className="mt-3 w-full bg-indigo-600 text-white p-2 rounded hover:bg-indigo-700"
+      >
+        Confirm Selection
+      </button>
+    </div>
+  </div>
+)}
+
+
+
+{showTeacherModal && (
+  <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
+    <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-lg relative">
+      <button 
+        onClick={() => setShowTeacherModal(false)} 
+        className="absolute top-2 right-3 text-gray-600 hover:text-gray-900 text-xl"
+      >
+        ❌
+      </button>
+      <h2 className="text-lg font-semibold mb-2">Select Teachers</h2>
+
+      {/* Show Filters Button */}
+      <button
+        onClick={() => setShowFilters((prev) => !prev)}
+        className={`px-3 py-2 rounded-md w-full mb-3 transition-colors 
+          ${showFilters ? "border border-indigo-500 bg-white text-indigo-600" : "bg-gray-400 text-white hover:bg-gray-600"}`}
+      >
+        {showFilters ? "Hide Filters" : "Show Filters"}
+      </button>
+
+      {/* Filter Inputs */}
+      {showFilters && (
+        <div className="space-y-2 mb-3">
+          <input
+            type="text"
+            placeholder="Search by Name"
+            className="border p-2 rounded w-full"
+            value={searchBy === "name" ? teacherSearch : ""}
+            onChange={(e) => {
+              setSearchBy("name");
+              setTeacherSearch(e.target.value);
+            }}
+          />
+          <input
+            type="text"
+            placeholder="Search by Email"
+            className="border p-2 rounded w-full"
+            value={searchBy === "email" ? teacherSearch : ""}
+            onChange={(e) => {
+              setSearchBy("email");
+              setTeacherSearch(e.target.value);
+            }}
+          />
+        </div>
+      )}
+
+      {/* Filtered Teacher List */}
+      <ul className="max-h-60 overflow-y-auto border rounded bg-white shadow-md">
+        {filteredTeachers.length > 0 ? (
+          filteredTeachers.map((teacher) => (
+            <li key={teacher._id} className="p-2 border-b flex justify-between items-center">
+              <span>{teacher.name} ({teacher.email})</span>
+              <input
+                type="checkbox"
+                checked={selectedTeachers.includes(teacher._id)}
+                onChange={() => toggleTeacherSelection(teacher._id)}
+              />
+            </li>
+          ))
+        ) : (
+          <li className="p-2 text-gray-500 text-center">No teachers found</li>
+        )}
+      </ul>
+
+      <button 
+        onClick={() => setShowTeacherModal(false)} 
+        className="mt-3 w-full bg-indigo-600 text-white p-2 rounded hover:bg-indigo-700"
+      >
+        Confirm Selection
+      </button>
+    </div>
+  </div>
+)}
+
+
+
+
+
               <div>
                 <label className="block text-sm font-medium text-gray-700">Attachments:</label>
                 <input

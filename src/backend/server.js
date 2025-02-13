@@ -11,7 +11,7 @@ import gridfsStream from "gridfs-stream";
 import announcementsRouter from "./routes/announcements.js";
 import attachments from "./routes/attachments.js";
 import "./utils/announcementCleanup.js"; // Enable automatic deletion of expired announcements
-
+import userRoutes from "./routes/userRoutes.js";
 const conn = mongoose.connection;
 let gfs;
 
@@ -52,6 +52,6 @@ app.use("/api/classes", classRoutes);
 app.use("/api/teacher", teacherRoutes);
 app.use("/api/student", studentRoutes);
 app.use("/api/announcements", announcementsRouter);
-
+app.use("/api/users",userRoutes)
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
 export { gfs };
