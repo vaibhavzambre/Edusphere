@@ -10,10 +10,11 @@ import dotenv from "dotenv";
 import gridfsStream from "gridfs-stream";
 import announcementsRouter from "./routes/announcements.js";
 import attachments from "./routes/attachments.js";
-import "./utils/announcementCleanup.js"; // Enable automatic deletion of expired announcements
 import userRoutes from "./routes/userRoutes.js";
-const conn = mongoose.connection;
-let gfs;
+import fileUpload from "express-fileupload";
+
+// Import the announcement cleanup utility to toggle visibility of expired announcements
+import "./utils/announcementCleanup.js";
 
 dotenv.config();
 const app = express();
@@ -28,6 +29,9 @@ app.use(
 
 app.use(express.json());
 
+// Configure express-fileupload middleware
+app.use(fileUpload());
+
 mongoose
   .connect("mongodb://localhost:27017/main_db", {
     useNewUrlParser: true,
@@ -36,22 +40,25 @@ mongoose
   .then(() => console.log("MongoDB Connected to main_db"))
   .catch((err) => console.error("MongoDB Connection Error:", err));
 
-  conn.once("open", () => {
-    gfs = gridfsStream(conn.db, mongoose.mongo);
-    gfs.collection("uploads"); // set collection name to 'uploads'
-    console.log("GridFS initialized");
-  });
+const conn = mongoose.connection;
+let gfs;
+conn.once("open", () => {
+  gfs = gridfsStream(conn.db, mongoose.mongo);
+  gfs.collection("uploads");
+  console.log("GridFS initialized");
+});
 
-  app.use("/uploads", express.static("uploads"));
+app.use("/uploads", express.static("uploads"));
 
-  app.use("/api/attachments",attachments);
-
+app.use("/api/attachments", attachments);
 app.use("/api/auth", authRoutes);
 app.use("/api/subjects", subjectRoutes);
 app.use("/api/classes", classRoutes);
 app.use("/api/teacher", teacherRoutes);
 app.use("/api/student", studentRoutes);
 app.use("/api/announcements", announcementsRouter);
-app.use("/api/users",userRoutes)
+app.use("/api/users", userRoutes);
+
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+
 export { gfs };

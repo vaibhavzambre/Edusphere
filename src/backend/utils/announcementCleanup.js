@@ -1,31 +1,34 @@
 import cron from "node-cron";
 import Announcement from "../models/Announcement.js";
 
-// Function to delete expired announcements
-const deleteExpiredAnnouncements = async () => {
+/**
+ * Finds all limited announcements that have expired (i.e. expiryDate <= current time)
+ * and are still marked visible, and sets visible to false.
+ */
+const updateExpiredAnnouncements = async () => {
   try {
-    const currentTime = new Date(); // Get current time
-
-    // Delete announcements where expiryDate has already passed
-    const result = await Announcement.deleteMany({
-      expiryDate: { $lte: currentTime },
-    });
-
-    if (result.deletedCount > 0) {
-      console.log(`🗑️ Deleted ${result.deletedCount} expired announcements.`);
-    } else {
-      console.log("✅ No expired announcements to delete.");
+    const now = Date.now();
+    // Use getTime() for comparison
+    const result = await Announcement.updateMany(
+      { 
+        expiryType: "limited", 
+        expiryDate: { $lte: new Date(now) }, 
+        visible: true 
+      },
+      { $set: { visible: false } }
+    );
+    if (result.modifiedCount > 0) {
+      console.log(`Updated ${result.modifiedCount} expired announcements to not visible.`);
     }
   } catch (error) {
-    console.error("❌ Error deleting expired announcements:", error);
+    console.error("Error updating expired announcements:", error);
   }
 };
 
-// Schedule the job to run every **hour**
-cron.schedule("0 * * * *", () => {
-  console.log("⏳ Running scheduled announcement cleanup...");
-  deleteExpiredAnnouncements();
+// Run this job every minute.
+cron.schedule("* * * * *", () => {
+  console.log("Running expired announcements update...");
+  updateExpiredAnnouncements();
 });
 
-// Export the function (optional, in case you want to run it manually somewhere else)
-export default deleteExpiredAnnouncements;
+export default updateExpiredAnnouncements;

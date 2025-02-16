@@ -1,4 +1,3 @@
-// src/backend/routes/file.js
 import express from "express";
 import mongoose from "mongoose";
 import gridfsStream from "gridfs-stream";
@@ -17,7 +16,6 @@ router.get("/:fileId", (req, res) => {
     if (!file || err) {
       return res.status(404).json({ message: "File not found" });
     }
-    // Set the content type and stream the file.
     res.set("Content-Type", file.contentType);
     const readstream = gfs.createReadStream({ _id: file._id });
     readstream.pipe(res);

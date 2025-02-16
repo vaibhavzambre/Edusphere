@@ -1,49 +1,61 @@
 import express from "express";
-import multer from "multer";
-import path from "path";
-import fs from "fs";
+import mongoose from "mongoose";
 
 const router = express.Router();
 
-// ✅ Configure Multer to Store Files Locally
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadPath = "uploads/";
-    if (!fs.existsSync(uploadPath)) {
-      fs.mkdirSync(uploadPath, { recursive: true }); // ✅ Ensure folder exists
-    }
-    cb(null, uploadPath);
-  },
-  filename: (req, file, cb) => {
-    cb(null, `${Date.now()}-${file.originalname}`);
-  },
-});
-
-const upload = multer({ storage }); // ✅ Now it's correctly placed after `storage`
-
-// ✅ File Upload Route
-router.post("/upload", upload.single("file"), (req, res) => {
-  if (!req.file) {
-    console.error("❌ No file received.");
+// POST /api/attachments/upload – Upload a file using express-fileupload and GridFSBucket
+router.post("/upload", async (req, res) => {
+  if (!req.files || !req.files.file) {
     return res.status(400).json({ message: "No file uploaded" });
   }
-
-  console.log("✅ File uploaded successfully:", req.file);
-
-  res.status(200).json({
-    filePath: `/uploads/${req.file.filename}`, // ✅ Use filePath instead of fileId
-    filename: req.file.filename,
-    contentType: req.file.mimetype,
-  });
+  
+  const file = req.files.file; // if multiple files, req.files.file can be an array
+  try {
+    const bucket = new mongoose.mongo.GridFSBucket(mongoose.connection.db, {
+      bucketName: "uploads",
+    });
+    const uploadStream = bucket.openUploadStream(file.name, {
+      contentType: file.mimetype,
+    });
+    uploadStream.end(file.data);
+    // UPDATED: Use uploadStream.id in finish handler
+    uploadStream.on("finish", () => {
+      return res.status(201).json({
+        filePath: uploadStream.id,
+        filename: file.name,
+        contentType: file.mimetype,
+      });
+    });
+    uploadStream.on("error", (err) => {
+      return res.status(500).json({ message: "Error uploading file", error: err.message });
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Error uploading file", error: err.message });
+  }
 });
 
-// ✅ Route to Serve Files
-router.get("/:filename", (req, res) => {
-  const filePath = path.join("uploads", req.params.filename);
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ message: "File not found" });
+// NEW: GET /api/attachments/:id – Download an attachment by its ID
+router.get("/:id", async (req, res) => {
+  try {
+    const fileId = new mongoose.Types.ObjectId(req.params.id);
+    const bucket = new mongoose.mongo.GridFSBucket(mongoose.connection.db, {
+      bucketName: "uploads",
+    });
+    const files = await bucket.find({ _id: fileId }).toArray();
+    if (!files || files.length === 0) {
+      return res.status(404).json({ message: "File not found" });
+    }
+    const file = files[0];
+    res.set({
+      "Content-Type": file.contentType,
+      "Content-Disposition": `attachment; filename="${file.filename}"`,
+    });
+    bucket.openDownloadStream(fileId).pipe(res);
+  } catch (error) {
+    console.error("Error downloading file:", error);
+    res.status(500).json({ message: "Error downloading file", error: error.message });
   }
-  res.sendFile(path.resolve(filePath));
 });
 
 export default router;

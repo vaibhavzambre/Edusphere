@@ -1,25 +1,29 @@
 import React, { useState, useEffect } from "react";
-import { useAuth } from "../context/AuthContext"; // Import Auth Context
 
-// Define interface for announcements
 interface Announcement {
   _id: string;
   title: string;
   content: string;
-  type: "global" | "role" | "class";
   publishDate: string;
   expiryDate?: string;
+  expiryType: string;
   createdBy: { name: string };
-  createdAt: string;
+  visible: boolean;
+  attachments?: {
+    filePath: string;
+    filename: string;
+    contentType: string;
+  }[];
 }
 
 const AnnouncementsStudent: React.FC = () => {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-  const { user } = useAuth(); // Get logged-in student info
 
   useEffect(() => {
     fetchAnnouncements();
+    const interval = setInterval(fetchAnnouncements, 1000); // Fetch every 1 second
+    return () => clearInterval(interval);
   }, []);
 
   const fetchAnnouncements = async () => {
@@ -31,11 +35,14 @@ const AnnouncementsStudent: React.FC = () => {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
         },
       });
-
       if (!response.ok) throw new Error("Failed to fetch announcements");
       const data = await response.json();
-
-      setAnnouncements(data); // No need to filter in frontend anymore
+      // Students see only visible announcements
+      const visibleData = data
+        .filter((a: Announcement) => a.visible)
+        .sort((a, b) => new Date(b.publishDate).getTime() - new Date(a.publishDate).getTime());
+      setAnnouncements(visibleData);
+      console.log(visibleData);
       setLoading(false);
     } catch (error) {
       console.error("Error fetching announcements:", error);
@@ -45,8 +52,7 @@ const AnnouncementsStudent: React.FC = () => {
 
   return (
     <div className="p-5">
-      <h1 className="text-2xl font-bold mb-4">Student Announcements</h1>
-
+      <h1 className="text-2xl font-bold mb-4">Announcements</h1>
       {loading ? (
         <p>Loading announcements...</p>
       ) : announcements.length === 0 ? (
@@ -58,17 +64,36 @@ const AnnouncementsStudent: React.FC = () => {
               <h3 className="text-lg font-semibold">{announcement.title}</h3>
               <p className="mb-2">{announcement.content}</p>
               <div className="text-sm text-gray-700 mb-1">
-                <strong>Type:</strong> {announcement.type}
-              </div>
-              <div className="text-sm text-gray-700 mb-1">
                 <strong>Created By:</strong> {announcement.createdBy.name}
               </div>
               <div className="text-sm text-gray-600 mb-1">
-                <strong>Published:</strong> {new Date(announcement.publishDate).toLocaleString()}
+                <strong>Published:</strong>{" "}
+                {new Date(announcement.publishDate).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
               </div>
-              {announcement.expiryDate && (
-                <div className="text-sm text-gray-600 mb-1">
-                  <strong>Expires:</strong> {new Date(announcement.expiryDate).toLocaleString()}
+              <div className="text-sm text-gray-600 mb-1">
+                <strong>Expiry:</strong>{" "}
+                {announcement.expiryType === "permanent"
+                  ? "Permanent"
+                  : new Date(announcement.expiryDate as string).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+              </div>
+              {/* NEW: Show attachments if present */}
+              {announcement.attachments && announcement.attachments.length > 0 && (
+                <div className="mt-2">
+                  <strong>Attachments:</strong>
+                  <ul className="list-disc list-inside">
+                    {announcement.attachments.map((att, index) => (
+                      <li key={index}>
+                        <a
+                          href={`http://localhost:5001/api/attachments/${att.filePath}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-500 underline"
+                        >
+                          {att.filename}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
             </div>
