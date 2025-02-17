@@ -28,7 +28,7 @@ interface Announcement {
   type: "global" | "role" | "class" | "individual";
   roles?: string[];
   classes?: Class[];
-  targetUsers?: User[];
+  targetUsers?: User[]; // Expect full user objects here
   publishDate: string;
   expiryDate?: string;
   expiryType: "permanent" | "limited";
@@ -44,7 +44,7 @@ interface AnnouncementFormData {
   type: "global" | "role" | "class" | "individual";
   roles: string[];
   classes: string[]; // Using only one field for class-specific announcements.
-  targetUsers: string[]; // array of user IDs
+  targetUsers: string[]; // IDs for form data
   publishDate: string;
   expiryType: "permanent" | "limited";
   expiryDate: string;
@@ -53,8 +53,7 @@ interface AnnouncementFormData {
 }
 
 /**
- * Converts a stored UTC ISO date string into a string formatted for
- * a datetime-local input in local (Mumbai) time.
+ * Converts a stored UTC ISO date string into a string formatted for a datetime-local input.
  */
 const formatDateToLocalInput = (dateStr: string): string => {
   const d = new Date(dateStr);
@@ -98,7 +97,6 @@ const AnnouncementsPage: React.FC = () => {
     attachmentsEnabled: false,
     attachments: [],
   });
-  // State to hold existing attachments when editing
   const [existingAttachments, setExistingAttachments] = useState<Attachment[]>([]);
 
   const [classesList, setClassesList] = useState<Class[]>([]);
@@ -109,34 +107,25 @@ const AnnouncementsPage: React.FC = () => {
   const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
   const [selectedTeachers, setSelectedTeachers] = useState<string[]>([]);
 
-  // Custom dropdown for classes
   const [showClassesDropdown, setShowClassesDropdown] = useState(false);
 
-  // Delete confirmation modal state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [announcementToDelete, setAnnouncementToDelete] = useState<Announcement | null>(null);
 
-  // Detailed modal state
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [detailedAnnouncement, setDetailedAnnouncement] = useState<Announcement | null>(null);
   const [recipientSearch, setRecipientSearch] = useState("");
-  // For filtering in student modal
-  const [studentSearch, setStudentSearch] = useState("");
-  const [searchBy, setSearchBy] = useState("name"); // default filter
 
-  // For filtering in teacher modal
-  const [teacherSearch, setTeacherSearch] = useState("");
-  const [searchByTeacher, setSearchByTeacher] = useState("name");
-
-  // For toggling filters display in modals
-  const [showFilters, setShowFilters] = useState(false);
-  // For student filtering:
+  // Filter states for modals
   const [studentNameSearch, setStudentNameSearch] = useState("");
   const [studentEmailSearch, setStudentEmailSearch] = useState("");
   const [studentSapIdSearch, setStudentSapIdSearch] = useState("");
-  // Teacher filter states:
   const [teacherNameSearch, setTeacherNameSearch] = useState("");
   const [teacherEmailSearch, setTeacherEmailSearch] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
+
+  const [detailedStudentSearch, setDetailedStudentSearch] = useState("");
+  const [detailedTeacherSearch, setDetailedTeacherSearch] = useState("");
 
   useEffect(() => {
     fetchAnnouncements();
@@ -151,14 +140,12 @@ const AnnouncementsPage: React.FC = () => {
     }
   }, [announcementFormData.type]);
 
-  // NEW: When editing an individual announcement, update preselected recipients
   useEffect(() => {
     if (
       editingAnnouncement &&
       editingAnnouncement.type === "individual" &&
       editingAnnouncement.targetUsers
     ) {
-      // Use the loaded lists of students and teachers to determine which recipients are students vs teachers
       const studentIds = editingAnnouncement.targetUsers
         .filter((user) => students.some((s) => s._id === user._id))
         .map((user) => user._id);
@@ -169,6 +156,15 @@ const AnnouncementsPage: React.FC = () => {
       setSelectedTeachers(teacherIds);
     }
   }, [editingAnnouncement, students, teachers]);
+
+  // Ensure detailed modal has up-to-date users
+  useEffect(() => {
+    if (detailedAnnouncement && detailedAnnouncement.type === "individual") {
+      if (students.length === 0 || teachers.length === 0) {
+        fetchUsers();
+      }
+    }
+  }, [detailedAnnouncement]);
 
   const fetchAnnouncements = async () => {
     try {
@@ -230,7 +226,6 @@ const AnnouncementsPage: React.FC = () => {
     }
   };
 
-  // Custom dropdown for selecting classes
   const selectAllClasses = () => {
     const allClassIds = classesList.map((cls) => cls._id);
     setAnnouncementFormData({ ...announcementFormData, classes: allClassIds });
@@ -271,7 +266,6 @@ const AnnouncementsPage: React.FC = () => {
     }
   };
 
-  // UPDATED: When editing, load existing attachments.
   const handleEdit = (announcement: Announcement) => {
     setEditingAnnouncement(announcement);
     setAnnouncementFormData({
@@ -288,14 +282,12 @@ const AnnouncementsPage: React.FC = () => {
           ? formatDateToLocalInput(announcement.expiryDate)
           : "",
       attachmentsEnabled: announcement.attachmentsEnabled,
-      attachments: [], // New uploads will go here
+      attachments: [],
     });
-    // Load existing attachments if any.
     setExistingAttachments(announcement.attachments ? announcement.attachments : []);
     setShowForm(true);
   };
 
-  // Handler to remove an existing attachment from the edit form
   const removeAttachment = (filePath: string) => {
     setExistingAttachments(existingAttachments.filter((att) => att.filePath !== filePath));
   };
@@ -348,9 +340,7 @@ const AnnouncementsPage: React.FC = () => {
         formData.append("file", file);
         const uploadResponse = await fetch("http://localhost:5001/api/attachments/upload", {
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-          },
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
           body: formData,
         });
         if (!uploadResponse.ok) {
@@ -498,7 +488,7 @@ const AnnouncementsPage: React.FC = () => {
         </button>
       </div>
 
-      {/* Upcoming Announcements Section */}
+      {/* Upcoming Announcements */}
       <div className="mb-8">
         <h2 className="text-2xl font-semibold text-gray-800 mb-4">Upcoming Announcements</h2>
         {upcomingAnnouncements.length === 0 ? (
@@ -509,15 +499,12 @@ const AnnouncementsPage: React.FC = () => {
               key={announcement._id}
               className="p-5 mb-4 rounded-xl shadow-md bg-white border border-gray-300 transition-transform transform hover:-translate-y-1 hover:shadow-lg hover:border-indigo-500 duration-300"
             >
-              <div className="flex justify-between items-start">
-                <div>
-                  <h3 className="text-xl font-semibold text-gray-800">{announcement.title}</h3>
-                  <p className="text-gray-600">{announcement.content}</p>
-                  <p className="text-sm text-gray-600">
-                    <strong>Type:</strong> {announcement.type === "global" ? "Global" : announcement.type}
-                  </p>
+              {/* UPDATED: Centered title and visually enhanced content */}
+              <div className="relative">
+                <div className="text-center">
+                  <h3 className="text-2xl font-bold text-gray-800">{announcement.title}</h3>
                 </div>
-                <div className="flex space-x-2">
+                <div className="absolute top-0 right-0 flex space-x-2">
                   <Edit
                     className="text-blue-500 cursor-pointer hover:text-blue-600"
                     onClick={() => handleEdit(announcement)}
@@ -531,40 +518,52 @@ const AnnouncementsPage: React.FC = () => {
                   />
                 </div>
               </div>
-              <div className="mt-2 text-sm text-gray-600">
-                <p>
-                  <strong>Publish Date:</strong>{" "}
-                  {new Date(announcement.publishDate).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
-                </p>
-                <p>
-                  <strong>Expiry:</strong>{" "}
-                  {announcement.expiryType === "permanent"
-                    ? "Permanent"
-                    : new Date(announcement.expiryDate!).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
-                </p>
-                <p>
-                  <strong>Created By:</strong> {announcement.createdBy?.name || "Admin"}
-                </p>
-                {announcement.attachments && announcement.attachments.length > 0 && (
-                  <div className="mt-2">
-                    <strong>Attachments:</strong>
-                    <ul className="list-disc list-inside">
-                      {announcement.attachments.map((att, index) => (
-                        <li key={index}>
-                          <a
-                            href={`http://localhost:5001/api/attachments/${att.filePath}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-blue-500 underline"
-                          >
-                            {att.filename}
-                          </a>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+              <div className="mt-4">
+                <p className="text-gray-700 text-lg leading-relaxed">{announcement.content}</p>
               </div>
+              <div className="mt-4 flex flex-wrap gap-4">
+                <div className="flex items-center space-x-1">
+                  <span className="font-semibold text-gray-700">Type:</span>
+                  <span className="text-gray-600">{announcement.type === "global" ? "Global" : announcement.type}</span>
+                </div>
+                <div className="flex items-center space-x-1">
+                  <span className="font-semibold text-gray-700">Publish Date:</span>
+                  <span className="text-gray-600">{new Date(announcement.publishDate).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</span>
+                </div>
+                <div className="flex items-center space-x-1">
+                  <span className="font-semibold text-gray-700">Expiry:</span>
+                  <span className="text-gray-600">
+                    {announcement.expiryType === "permanent"
+                      ? "Permanent"
+                      : new Date(announcement.expiryDate!).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+                  </span>
+                </div>
+                <div className="flex items-center space-x-1">
+                  <span className="font-semibold text-gray-700">Created By:</span>
+                  <span className="text-gray-600">{announcement.createdBy?.name || "Admin"}</span>
+                </div>
+              </div>
+              {announcement.attachments && announcement.attachments.length > 0 && (
+                <div className="mt-2">
+                  <strong>Attachments:</strong>
+                  <div className="space-y-2 mt-2">
+                    {announcement.attachments.map((att, index) => (
+                      <div
+                        key={index}
+                        className="cursor-pointer text-blue-500 font-medium hover:text-blue-700 p-1 border rounded-md transition-colors duration-200"
+                      >
+                        <a
+                          href={`http://localhost:5001/api/attachments/${att.filePath}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {att.filename}
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <button
                 onClick={() => {
                   setDetailedAnnouncement(announcement);
@@ -579,25 +578,25 @@ const AnnouncementsPage: React.FC = () => {
         )}
       </div>
 
-      {/* Active Announcements Section */}
+      {/* Active Announcements */}
       <div className="mb-8">
         <h2 className="text-2xl font-semibold text-gray-800 mb-4">Active Announcements</h2>
         {activeAnnouncements.length === 0 ? (
           <p className="text-gray-600">No active announcements.</p>
         ) : (
           activeAnnouncements.map((announcement) => (
-            <div key={announcement._id} className="p-4 mb-4 rounded-lg shadow-sm bg-white border border-gray-200">
-              <div className="flex justify-between items-start">
-                <div>
-                  <h3 className="text-xl font-semibold text-gray-800">{announcement.title}</h3>
-                  <p className="text-gray-600">{announcement.content}</p>
-                  <p className="text-sm text-gray-600">
-                    <strong>Type:</strong> {announcement.type === "global" ? "Global" : announcement.type}
-                  </p>
+            <div
+              key={announcement._id}
+              className="p-5 mb-4 rounded-xl shadow-md bg-white border border-gray-300 transition-transform transform hover:-translate-y-1 hover:shadow-lg hover:border-indigo-500 duration-300"
+            >
+              {/* UPDATED: Centered title and enhanced content */}
+              <div className="relative">
+                <div className="text-center">
+                  <h3 className="text-2xl font-bold text-gray-800">{announcement.title}</h3>
                 </div>
-                <div className="flex space-x-2">
+                <div className="absolute top-0 right-0 flex space-x-2">
                   <Edit
-                    className="text-indigo-500 cursor-pointer hover:text-indigo-600 transition-all duration-200 transform hover:scale-110"
+                    className="text-blue-500 cursor-pointer hover:text-blue-600 transition-all duration-200 transform hover:scale-110"
                     onClick={() => handleEdit(announcement)}
                   />
                   <Trash
@@ -609,40 +608,52 @@ const AnnouncementsPage: React.FC = () => {
                   />
                 </div>
               </div>
-              <div className="mt-2 text-sm text-gray-600">
-                <p>
-                  <strong>Publish Date:</strong>{" "}
-                  {new Date(announcement.publishDate).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
-                </p>
-                <p>
-                  <strong>Expiry:</strong>{" "}
-                  {announcement.expiryType === "permanent"
-                    ? "Permanent"
-                    : new Date(announcement.expiryDate!).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
-                </p>
-                <p>
-                  <strong>Created By:</strong> {announcement.createdBy?.name || "Admin"}
-                </p>
-                {announcement.attachments && announcement.attachments.length > 0 && (
-                  <div className="mt-2">
-                    <strong>Attachments:</strong>
-                    <ul className="list-disc list-inside">
-                      {announcement.attachments.map((att, index) => (
-                        <li key={index}>
-                          <a
-                            href={`http://localhost:5001/api/attachments/${att.filePath}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-blue-500 underline"
-                          >
-                            {att.filename}
-                          </a>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+              <div className="mt-4">
+                <p className="text-gray-700 text-lg leading-relaxed">{announcement.content}</p>
               </div>
+              <div className="mt-4 flex flex-wrap gap-4">
+                <div className="flex items-center space-x-1">
+                  <span className="font-semibold text-gray-700">Type:</span>
+                  <span className="text-gray-600">{announcement.type === "global" ? "Global" : announcement.type}</span>
+                </div>
+                <div className="flex items-center space-x-1">
+                  <span className="font-semibold text-gray-700">Publish Date:</span>
+                  <span className="text-gray-600">{new Date(announcement.publishDate).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</span>
+                </div>
+                <div className="flex items-center space-x-1">
+                  <span className="font-semibold text-gray-700">Expiry:</span>
+                  <span className="text-gray-600">
+                    {announcement.expiryType === "permanent"
+                      ? "Permanent"
+                      : new Date(announcement.expiryDate!).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+                  </span>
+                </div>
+                <div className="flex items-center space-x-1">
+                  <span className="font-semibold text-gray-700">Created By:</span>
+                  <span className="text-gray-600">{announcement.createdBy?.name || "Admin"}</span>
+                </div>
+              </div>
+              {announcement.attachments && announcement.attachments.length > 0 && (
+                <div className="mt-2">
+                  <strong>Attachments:</strong>
+                  <div className="space-y-2 mt-2">
+                    {announcement.attachments.map((att, index) => (
+                      <div
+                        key={index}
+                        className="cursor-pointer text-blue-500 font-medium hover:text-blue-700 p-1 border rounded-md transition-colors duration-200"
+                      >
+                        <a
+                          href={`http://localhost:5001/api/attachments/${att.filePath}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {att.filename}
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <button
                 onClick={() => {
                   setDetailedAnnouncement(announcement);
@@ -657,23 +668,23 @@ const AnnouncementsPage: React.FC = () => {
         )}
       </div>
 
-      {/* Expired Announcements Section */}
+      {/* Expired Announcements */}
       <div className="mb-8">
         <h2 className="text-2xl font-semibold text-gray-800 mb-4">Expired Announcements</h2>
         {expiredAnnouncements.length === 0 ? (
           <p className="text-gray-600">No expired announcements.</p>
         ) : (
           expiredAnnouncements.map((announcement) => (
-            <div key={announcement._id} className="p-4 mb-4 rounded-lg shadow-sm bg-gray-100 border border-gray-300">
-              <div className="flex justify-between items-start">
-                <div>
-                  <h3 className="text-xl font-semibold text-gray-800">{announcement.title}</h3>
-                  <p className="text-gray-600">{announcement.content}</p>
-                  <p className="text-sm text-gray-600">
-                    <strong>Type:</strong> {announcement.type === "global" ? "Global" : announcement.type}
-                  </p>
+            <div
+              key={announcement._id}
+              className="p-5 mb-4 rounded-xl shadow-md bg-gray-100 border border-gray-300 transition-transform transform hover:-translate-y-1 hover:shadow-lg hover:border-indigo-500 duration-300"
+            >
+              {/* UPDATED: Centered title and enhanced content */}
+              <div className="relative">
+                <div className="text-center">
+                  <h3 className="text-2xl font-bold text-gray-800">{announcement.title}</h3>
                 </div>
-                <div className="flex space-x-2">
+                <div className="absolute top-0 right-0 flex space-x-2">
                   <Edit
                     className="text-blue-500 cursor-pointer hover:text-blue-600"
                     onClick={() => handleEdit(announcement)}
@@ -687,38 +698,52 @@ const AnnouncementsPage: React.FC = () => {
                   />
                 </div>
               </div>
-              <div className="mt-2 text-sm text-gray-600">
-                <p>
-                  <strong>Publish Date:</strong>{" "}
-                  {new Date(announcement.publishDate).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
-                </p>
-                <p>
-                  <strong>Expired On:</strong>{" "}
-                  {new Date(announcement.expiryDate!).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
-                </p>
-                <p>
-                  <strong>Created By:</strong> {announcement.createdBy?.name || "Admin"}
-                </p>
-                {announcement.attachments && announcement.attachments.length > 0 && (
-                  <div className="mt-2">
-                    <strong>Attachments:</strong>
-                    <ul className="list-disc list-inside">
-                      {announcement.attachments.map((att, index) => (
-                        <li key={index}>
-                          <a
-                            href={`http://localhost:5001/api/attachments/${att.filePath}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-blue-500 underline"
-                          >
-                            {att.filename}
-                          </a>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+              <div className="mt-4">
+                <p className="text-gray-700 text-lg leading-relaxed">{announcement.content}</p>
               </div>
+              <div className="mt-4 flex flex-wrap gap-4">
+                <div className="flex items-center space-x-1">
+                  <span className="font-semibold text-gray-700">Type:</span>
+                  <span className="text-gray-600">{announcement.type === "global" ? "Global" : announcement.type}</span>
+                </div>
+                <div className="flex items-center space-x-1">
+                  <span className="font-semibold text-gray-700">Publish Date:</span>
+                  <span className="text-gray-600">{new Date(announcement.publishDate).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</span>
+                </div>
+                <div className="flex items-center space-x-1">
+                  <span className="font-semibold text-gray-700">Expiry:</span>
+                  <span className="text-gray-600">
+                    {announcement.expiryType === "permanent"
+                      ? "Permanent"
+                      : new Date(announcement.expiryDate!).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+                  </span>
+                </div>
+                <div className="flex items-center space-x-1">
+                  <span className="font-semibold text-gray-700">Created By:</span>
+                  <span className="text-gray-600">{announcement.createdBy?.name || "Admin"}</span>
+                </div>
+              </div>
+              {announcement.attachments && announcement.attachments.length > 0 && (
+                <div className="mt-2">
+                  <strong>Attachments:</strong>
+                  <div className="space-y-2 mt-2">
+                    {announcement.attachments.map((att, index) => (
+                      <div
+                        key={index}
+                        className="cursor-pointer text-blue-500 font-medium hover:text-blue-700 p-1 border rounded-md transition-colors duration-200"
+                      >
+                        <a
+                          href={`http://localhost:5001/api/attachments/${att.filePath}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {att.filename}
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <button
                 onClick={() => {
                   setDetailedAnnouncement(announcement);
@@ -733,13 +758,159 @@ const AnnouncementsPage: React.FC = () => {
         )}
       </div>
 
+      {/* Detailed Recipients Modal */}
+      {showDetailModal && detailedAnnouncement && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
+          <div
+            className="bg-white p-6 rounded-lg shadow-lg w-full max-w-lg overflow-y-auto"
+            style={{ maxHeight: "80vh" }} // UPDATED: Enable scrollbar if content overflows
+          >
+            <h2 className="text-xl font-bold mb-4">Detailed Recipients</h2>
+            <p className="mb-4 text-sm text-gray-700">
+              <strong>Announcement Type:</strong>{" "}
+              {detailedAnnouncement.type === "global" ? "Global" : detailedAnnouncement.type}
+            </p>
+            {detailedAnnouncement.type === "role" && (
+              <div className="mb-4">
+                <p>
+                  <strong>Roles:</strong> {detailedAnnouncement.roles?.join(", ")}
+                </p>
+              </div>
+            )}
+            {detailedAnnouncement.type === "class" && (
+              <div className="mb-4">
+                <p className="font-medium">Classes:</p>
+                <div className="space-y-3">
+                  {detailedAnnouncement.classes?.map((cls) => (
+                    <div key={cls._id} className="p-3 border rounded-md shadow-sm bg-white">
+                      {cls.class_code} - {cls.commencement_year} ({cls.specialization})
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {detailedAnnouncement.type === "individual" && (
+              <div className="mb-4">
+                <p className="font-medium">Student Recipients:</p>
+                <input
+                  type="text"
+                  placeholder="Search Students by Name/Email/SAP ID..."
+                  className="border p-2 rounded w-full mb-3"
+                  value={detailedStudentSearch}
+                  onChange={(e) => setDetailedStudentSearch(e.target.value)}
+                />
+                {(() => {
+                  let studentRecipients: User[] = [];
+                  if (detailedAnnouncement.targetUsers && detailedAnnouncement.targetUsers.length > 0) {
+                    if (typeof detailedAnnouncement.targetUsers[0] === "object" && "name" in detailedAnnouncement.targetUsers[0]) {
+                      studentRecipients = detailedAnnouncement.targetUsers.filter(
+                        (user) =>
+                          students.some((s) => s._id === user._id) &&
+                          (
+                            user.name.toLowerCase().includes(detailedStudentSearch.toLowerCase()) ||
+                            user.email.toLowerCase().includes(detailedStudentSearch.toLowerCase()) ||
+                            (students.find((s) => s._id === user._id)?.profile?.sap_id
+                              ?.toString()
+                              .includes(detailedStudentSearch))
+                          )
+                      );
+                    } else {
+                      studentRecipients = students.filter((s) => detailedAnnouncement.targetUsers!.includes(s._id));
+                      studentRecipients = studentRecipients.filter(
+                        (user) =>
+                          user.name.toLowerCase().includes(detailedStudentSearch.toLowerCase()) ||
+                          user.email.toLowerCase().includes(detailedStudentSearch.toLowerCase()) ||
+                          (user.profile?.sap_id.toString().includes(detailedStudentSearch))
+                      );
+                    }
+                  }
+                  return (
+                    <div className="space-y-3">
+                      {studentRecipients.map((user) => {
+                        const studentDetails = students.find((s) => s._id === user._id);
+                        return (
+                          <div key={user._id} className="p-3 border rounded-md shadow-sm bg-white">
+                            {user.name} ({user.email}) - SAP: {studentDetails?.profile?.sap_id || "N/A"}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+                <p className="font-medium mt-4">Teacher Recipients:</p>
+                <input
+                  type="text"
+                  placeholder="Search Teachers by Name/Email..."
+                  className="border p-2 rounded w-full mb-3"
+                  value={detailedTeacherSearch}
+                  onChange={(e) => setDetailedTeacherSearch(e.target.value)}
+                />
+                {(() => {
+                  let teacherRecipients: User[] = [];
+                  if (detailedAnnouncement.targetUsers && detailedAnnouncement.targetUsers.length > 0) {
+                    if (typeof detailedAnnouncement.targetUsers[0] === "object" && "name" in detailedAnnouncement.targetUsers[0]) {
+                      teacherRecipients = detailedAnnouncement.targetUsers.filter(
+                        (user) =>
+                          teachers.some((t) => t._id === user._id) &&
+                          (
+                            user.name.toLowerCase().includes(detailedTeacherSearch.toLowerCase()) ||
+                            user.email.toLowerCase().includes(detailedTeacherSearch.toLowerCase())
+                          )
+                      );
+                    } else {
+                      teacherRecipients = teachers.filter((t) => detailedAnnouncement.targetUsers!.includes(t._id));
+                      teacherRecipients = teacherRecipients.filter(
+                        (user) =>
+                          user.name.toLowerCase().includes(detailedTeacherSearch.toLowerCase()) ||
+                          user.email.toLowerCase().includes(detailedTeacherSearch.toLowerCase())
+                      );
+                    }
+                  }
+                  return (
+                    <div className="space-y-3">
+                      {teacherRecipients.map((user) => (
+                        <div key={user._id} className="p-3 border rounded-md shadow-sm bg-white">
+                          {user.name} ({user.email})
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+            {detailedAnnouncement.attachments && detailedAnnouncement.attachments.length > 0 && (
+              <div className="mb-4">
+                <p className="font-medium">Attachments:</p>
+                <div className="space-y-2 mt-2">
+                  {detailedAnnouncement.attachments.map((att, index) => (
+                    <div key={index} className="p-2 border rounded-md shadow-sm">
+                      <a
+                        href={`http://localhost:5001/api/attachments/${att.filePath}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-500 hover:text-blue-600 transition-colors duration-200"
+                      >
+                        {att.filename}
+                      </a>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="flex justify-end">
+              <button onClick={() => setShowDetailModal(false)} className="px-4 py-2 bg-gray-300 rounded">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Add/Edit Announcement Modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-start pt-10">
           <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <h2 className="text-xl font-bold mb-4">
-              {editingAnnouncement ? "Update Announcement" : "Create Announcement"}
-            </h2>
+            <h2 className="text-xl font-bold mb-4">{editingAnnouncement ? "Update Announcement" : "Create Announcement"}</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               {/* Title */}
               <div>
@@ -749,9 +920,7 @@ const AnnouncementsPage: React.FC = () => {
                 <input
                   type="text"
                   value={announcementFormData.title}
-                  onChange={(e) =>
-                    setAnnouncementFormData({ ...announcementFormData, title: e.target.value })
-                  }
+                  onChange={(e) => setAnnouncementFormData({ ...announcementFormData, title: e.target.value })}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                   required
                 />
@@ -763,9 +932,7 @@ const AnnouncementsPage: React.FC = () => {
                 </label>
                 <textarea
                   value={announcementFormData.content}
-                  onChange={(e) =>
-                    setAnnouncementFormData({ ...announcementFormData, content: e.target.value })
-                  }
+                  onChange={(e) => setAnnouncementFormData({ ...announcementFormData, content: e.target.value })}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                   required
                 />
@@ -828,7 +995,6 @@ const AnnouncementsPage: React.FC = () => {
                   <p className="text-sm font-medium text-gray-700">
                     Select Classes:<span className="text-red-500">*</span>
                   </p>
-                  {/* Custom dropdown for selecting classes */}
                   <div className="relative">
                     <button
                       type="button"
@@ -892,18 +1058,10 @@ const AnnouncementsPage: React.FC = () => {
                     Select Recipients:<span className="text-red-500">*</span>
                   </p>
                   <div className="flex space-x-4">
-                    <button
-                      type="button"
-                      onClick={() => setShowStudentModal(true)}
-                      className="px-3 py-1 bg-indigo-500 text-white rounded"
-                    >
+                    <button type="button" onClick={() => setShowStudentModal(true)} className="px-3 py-1 bg-indigo-500 text-white rounded">
                       Choose Students
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowTeacherModal(true)}
-                      className="px-3 py-1 bg-indigo-500 text-white rounded"
-                    >
+                    <button type="button" onClick={() => setShowTeacherModal(true)} className="px-3 py-1 bg-indigo-500 text-white rounded">
                       Choose Teachers
                     </button>
                   </div>
@@ -918,9 +1076,7 @@ const AnnouncementsPage: React.FC = () => {
                   type="datetime-local"
                   value={announcementFormData.publishDate}
                   min={getCurrentDateTimeLocal()}
-                  onChange={(e) =>
-                    setAnnouncementFormData({ ...announcementFormData, publishDate: e.target.value })
-                  }
+                  onChange={(e) => setAnnouncementFormData({ ...announcementFormData, publishDate: e.target.value })}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                   required
                 />
@@ -932,9 +1088,7 @@ const AnnouncementsPage: React.FC = () => {
                 </label>
                 <select
                   value={announcementFormData.expiryType}
-                  onChange={(e) =>
-                    setAnnouncementFormData({ ...announcementFormData, expiryType: e.target.value as "permanent" | "limited" })
-                  }
+                  onChange={(e) => setAnnouncementFormData({ ...announcementFormData, expiryType: e.target.value as "permanent" | "limited" })}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                   required
                 >
@@ -942,7 +1096,7 @@ const AnnouncementsPage: React.FC = () => {
                   <option value="limited">Time-Limited</option>
                 </select>
               </div>
-              {/* Expiry Date (only if limited) */}
+              {/* Expiry Date */}
               {announcementFormData.expiryType === "limited" && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
@@ -951,24 +1105,20 @@ const AnnouncementsPage: React.FC = () => {
                   <input
                     type="datetime-local"
                     value={announcementFormData.expiryDate}
-                    onChange={(e) =>
-                      setAnnouncementFormData({ ...announcementFormData, expiryDate: e.target.value })
-                    }
+                    onChange={(e) => setAnnouncementFormData({ ...announcementFormData, expiryDate: e.target.value })}
                     className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                     required
                   />
                 </div>
               )}
-              {/* Attachments dropdown */}
+              {/* Attachments */}
               <div>
                 <label className="block text-sm font-medium text-gray-700">
                   Do you have attachments?<span className="text-red-500">*</span>
                 </label>
                 <select
                   value={announcementFormData.attachmentsEnabled ? "yes" : "no"}
-                  onChange={(e) =>
-                    setAnnouncementFormData({ ...announcementFormData, attachmentsEnabled: e.target.value === "yes" })
-                  }
+                  onChange={(e) => setAnnouncementFormData({ ...announcementFormData, attachmentsEnabled: e.target.value === "yes" })}
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
                   required
                 >
@@ -976,21 +1126,12 @@ const AnnouncementsPage: React.FC = () => {
                   <option value="yes">Yes</option>
                 </select>
               </div>
-              {/* File upload (if attachments enabled) */}
               {announcementFormData.attachmentsEnabled && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    Attach New Files:
-                  </label>
-                  <input
-                    type="file"
-                    multiple
-                    onChange={handleFileChange}
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"
-                  />
+                  <label className="block text-sm font-medium text-gray-700">Attach New Files:</label>
+                  <input type="file" multiple onChange={handleFileChange} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" />
                 </div>
               )}
-              {/* Display Existing Attachments (if editing and they exist) */}
               {editingAnnouncement && existingAttachments.length > 0 && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Existing Attachments:</label>
@@ -1038,22 +1179,15 @@ const AnnouncementsPage: React.FC = () => {
       {showStudentModal && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
           <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-lg relative">
-            <button
-              onClick={() => setShowStudentModal(false)}
-              className="absolute top-2 right-3 text-gray-600 hover:text-gray-900 text-xl"
-            >
+            <button onClick={() => setShowStudentModal(false)} className="absolute top-2 right-3 text-gray-600 hover:text-gray-900 text-xl">
               ❌
             </button>
             <h2 className="text-lg font-semibold mb-2">Select Students</h2>
-
-            {/* Toggle Filters and Clear All button */}
             <div className="flex items-center mb-3">
               <button
                 onClick={() => setShowFilters((prev) => !prev)}
                 className={`px-3 py-2 rounded-md w-full transition-colors ${
-                  showFilters
-                    ? "border border-indigo-500 bg-white text-indigo-600"
-                    : "bg-gray-400 text-white hover:bg-gray-600"
+                  showFilters ? "border border-indigo-500 bg-white text-indigo-600" : "bg-gray-400 text-white hover:bg-gray-600"
                 }`}
               >
                 {showFilters ? "Hide Filters" : "Show Filters"}
@@ -1071,70 +1205,31 @@ const AnnouncementsPage: React.FC = () => {
                 </button>
               )}
             </div>
-
-            {/* Filter Inputs */}
             {showFilters && (
               <div className="space-y-2 mb-3">
-                <input
-                  type="text"
-                  placeholder="Search by Name"
-                  className="border p-2 rounded w-full"
-                  value={studentNameSearch}
-                  onChange={(e) => setStudentNameSearch(e.target.value)}
-                />
-                <input
-                  type="text"
-                  placeholder="Search by Email"
-                  className="border p-2 rounded w-full"
-                  value={studentEmailSearch}
-                  onChange={(e) => setStudentEmailSearch(e.target.value)}
-                />
-                <input
-                  type="text"
-                  placeholder="Search by SAP ID"
-                  className="border p-2 rounded w-full"
-                  value={studentSapIdSearch}
-                  onChange={(e) => setStudentSapIdSearch(e.target.value)}
-                />
+                <input type="text" placeholder="Search by Name" className="border p-2 rounded w-full" value={studentNameSearch} onChange={(e) => setStudentNameSearch(e.target.value)} />
+                <input type="text" placeholder="Search by Email" className="border p-2 rounded w-full" value={studentEmailSearch} onChange={(e) => setStudentEmailSearch(e.target.value)} />
+                <input type="text" placeholder="Search by SAP ID" className="border p-2 rounded w-full" value={studentSapIdSearch} onChange={(e) => setStudentSapIdSearch(e.target.value)} />
               </div>
             )}
-
-            {/* Filtered Student List */}
             <ul className="max-h-60 overflow-y-auto border rounded">
               {students
                 .filter((student) => {
-                  const nameMatch =
-                    studentNameSearch.trim() === "" ||
-                    student.name.toLowerCase().includes(studentNameSearch.toLowerCase());
-                  const emailMatch =
-                    studentEmailSearch.trim() === "" ||
-                    student.email.toLowerCase().includes(studentEmailSearch.toLowerCase());
-                  const sapMatch =
-                    studentSapIdSearch.trim() === "" ||
-                    (student.profile && student.profile.sap_id.toString().includes(studentSapIdSearch));
+                  const nameMatch = studentNameSearch.trim() === "" || student.name.toLowerCase().includes(studentNameSearch.toLowerCase());
+                  const emailMatch = studentEmailSearch.trim() === "" || student.email.toLowerCase().includes(studentEmailSearch.toLowerCase());
+                  const sapMatch = studentSapIdSearch.trim() === "" || (student.profile && student.profile.sap_id.toString().includes(studentSapIdSearch));
                   return nameMatch && emailMatch && sapMatch;
                 })
                 .map((student) => (
                   <li key={student._id} className="p-2 border-b flex justify-between items-center">
                     <span>
-                      {student.name} ({student.email}) - {student.profile?.sap_id ?? "N/A"}
+                      {student.name} ({student.email}) - SAP: {student.profile?.sap_id || "N/A"}
                     </span>
-                    <input
-                      type="checkbox"
-                      checked={selectedStudents.includes(student._id)}
-                      onChange={() => toggleStudentSelection(student._id)}
-                    />
+                    <input type="checkbox" checked={selectedStudents.includes(student._id)} onChange={() => toggleStudentSelection(student._id)} />
                   </li>
                 ))}
             </ul>
-
-            <button
-              onClick={() => {
-                setShowFilters(false);
-                setShowStudentModal(false);
-              }}
-              className="mt-3 w-full bg-indigo-600 text-white p-2 rounded"
-            >
+            <button onClick={() => { setShowFilters(false); setShowStudentModal(false); }} className="mt-3 w-full bg-indigo-600 text-white p-2 rounded">
               Confirm Selection
             </button>
           </div>
@@ -1145,22 +1240,15 @@ const AnnouncementsPage: React.FC = () => {
       {showTeacherModal && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
           <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-lg relative">
-            <button
-              onClick={() => setShowTeacherModal(false)}
-              className="absolute top-2 right-3 text-gray-600 hover:text-gray-900 text-xl"
-            >
+            <button onClick={() => setShowTeacherModal(false)} className="absolute top-2 right-3 text-gray-600 hover:text-gray-900 text-xl">
               ❌
             </button>
             <h2 className="text-lg font-semibold mb-2">Select Teachers</h2>
-
-            {/* Toggle Filters & Clear All Button */}
             <div className="flex items-center mb-3">
               <button
                 onClick={() => setShowFilters((prev) => !prev)}
                 className={`px-3 py-2 rounded-md w-full transition-colors ${
-                  showFilters
-                    ? "border border-indigo-500 bg-white text-indigo-600"
-                    : "bg-gray-400 text-white hover:bg-gray-600"
+                  showFilters ? "border border-indigo-500 bg-white text-indigo-600" : "bg-gray-400 text-white hover:bg-gray-600"
                 }`}
               >
                 {showFilters ? "Hide Filters" : "Show Filters"}
@@ -1177,37 +1265,17 @@ const AnnouncementsPage: React.FC = () => {
                 </button>
               )}
             </div>
-
-            {/* Filter Inputs */}
             {showFilters && (
               <div className="space-y-2 mb-3">
-                <input
-                  type="text"
-                  placeholder="Search by Name"
-                  className="border p-2 rounded w-full"
-                  value={teacherNameSearch}
-                  onChange={(e) => setTeacherNameSearch(e.target.value)}
-                />
-                <input
-                  type="text"
-                  placeholder="Search by Email"
-                  className="border p-2 rounded w-full"
-                  value={teacherEmailSearch}
-                  onChange={(e) => setTeacherEmailSearch(e.target.value)}
-                />
+                <input type="text" placeholder="Search by Name" className="border p-2 rounded w-full" value={teacherNameSearch} onChange={(e) => setTeacherNameSearch(e.target.value)} />
+                <input type="text" placeholder="Search by Email" className="border p-2 rounded w-full" value={teacherEmailSearch} onChange={(e) => setTeacherEmailSearch(e.target.value)} />
               </div>
             )}
-
-            {/* Filtered Teacher List */}
             <ul className="max-h-60 overflow-y-auto border rounded bg-white shadow-md">
               {teachers
                 .filter((teacher) => {
-                  const nameMatch =
-                    teacherNameSearch.trim() === "" ||
-                    teacher.name.toLowerCase().includes(teacherNameSearch.toLowerCase());
-                  const emailMatch =
-                    teacherEmailSearch.trim() === "" ||
-                    teacher.email.toLowerCase().includes(teacherEmailSearch.toLowerCase());
+                  const nameMatch = teacherNameSearch.trim() === "" || teacher.name.toLowerCase().includes(teacherNameSearch.toLowerCase());
+                  const emailMatch = teacherEmailSearch.trim() === "" || teacher.email.toLowerCase().includes(teacherEmailSearch.toLowerCase());
                   return nameMatch && emailMatch;
                 })
                 .map((teacher) => (
@@ -1215,22 +1283,11 @@ const AnnouncementsPage: React.FC = () => {
                     <span>
                       {teacher.name} ({teacher.email})
                     </span>
-                    <input
-                      type="checkbox"
-                      checked={selectedTeachers.includes(teacher._id)}
-                      onChange={() => toggleTeacherSelection(teacher._id)}
-                    />
+                    <input type="checkbox" checked={selectedTeachers.includes(teacher._id)} onChange={() => toggleTeacherSelection(teacher._id)} />
                   </li>
                 ))}
             </ul>
-
-            <button
-              onClick={() => {
-                setShowFilters(false);
-                setShowTeacherModal(false);
-              }}
-              className="mt-3 w-full bg-indigo-600 text-white p-2 rounded"
-            >
+            <button onClick={() => { setShowFilters(false); setShowTeacherModal(false); }} className="mt-3 w-full bg-indigo-600 text-white p-2 rounded">
               Confirm Selection
             </button>
           </div>
@@ -1260,7 +1317,10 @@ const AnnouncementsPage: React.FC = () => {
       {/* Detailed Recipients Modal */}
       {showDetailModal && detailedAnnouncement && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-lg">
+          <div
+            className="bg-white p-6 rounded-lg shadow-lg w-full max-w-lg overflow-y-auto"
+            style={{ maxHeight: "80vh" }}
+          >
             <h2 className="text-xl font-bold mb-4">Detailed Recipients</h2>
             <p className="mb-4 text-sm text-gray-700">
               <strong>Announcement Type:</strong>{" "}
@@ -1276,57 +1336,121 @@ const AnnouncementsPage: React.FC = () => {
             {detailedAnnouncement.type === "class" && (
               <div className="mb-4">
                 <p className="font-medium">Classes:</p>
-                <ul className="list-disc list-inside">
+                <div className="space-y-3">
                   {detailedAnnouncement.classes?.map((cls) => (
-                    <li key={cls._id}>
+                    <div key={cls._id} className="p-3 border rounded-md shadow-sm bg-white">
                       {cls.class_code} - {cls.commencement_year} ({cls.specialization})
-                    </li>
+                    </div>
                   ))}
-                </ul>
+                </div>
               </div>
             )}
             {detailedAnnouncement.type === "individual" && (
               <div className="mb-4">
-                <p className="font-medium">Recipients:</p>
+                <p className="font-medium">Student Recipients:</p>
                 <input
                   type="text"
-                  placeholder="Search recipients..."
+                  placeholder="Search Students by Name/Email/SAP ID..."
                   className="border p-2 rounded w-full mb-3"
-                  value={recipientSearch}
-                  onChange={(e) => setRecipientSearch(e.target.value)}
+                  value={detailedStudentSearch}
+                  onChange={(e) => setDetailedStudentSearch(e.target.value)}
                 />
-                <ul className="list-disc list-inside">
-                  {detailedAnnouncement.targetUsers
-                    ?.filter(
-                      (user) =>
-                        user.name.toLowerCase().includes(recipientSearch.toLowerCase()) ||
-                        user.email.toLowerCase().includes(recipientSearch.toLowerCase())
-                    )
-                    .map((user) => (
-                      <li key={user._id}>
-                        {user.name} ({user.email})
-                      </li>
-                    ))}
-                </ul>
+                {(() => {
+                  let studentRecipients: User[] = [];
+                  if (detailedAnnouncement.targetUsers && detailedAnnouncement.targetUsers.length > 0) {
+                    if (typeof detailedAnnouncement.targetUsers[0] === "object" && "name" in detailedAnnouncement.targetUsers[0]) {
+                      studentRecipients = detailedAnnouncement.targetUsers.filter(
+                        (user) =>
+                          students.some((s) => s._id === user._id) &&
+                          (
+                            user.name.toLowerCase().includes(detailedStudentSearch.toLowerCase()) ||
+                            user.email.toLowerCase().includes(detailedStudentSearch.toLowerCase()) ||
+                            (students.find((s) => s._id === user._id)?.profile?.sap_id
+                              ?.toString()
+                              .includes(detailedStudentSearch))
+                          )
+                      );
+                    } else {
+                      studentRecipients = students.filter((s) => detailedAnnouncement.targetUsers!.includes(s._id));
+                      studentRecipients = studentRecipients.filter(
+                        (user) =>
+                          user.name.toLowerCase().includes(detailedStudentSearch.toLowerCase()) ||
+                          user.email.toLowerCase().includes(detailedStudentSearch.toLowerCase()) ||
+                          (user.profile?.sap_id.toString().includes(detailedStudentSearch))
+                      );
+                    }
+                  }
+                  return (
+                    <div className="space-y-3">
+                      {studentRecipients.map((user) => {
+                        const studentDetails = students.find((s) => s._id === user._id);
+                        return (
+                          <div key={user._id} className="p-3 border rounded-md shadow-sm bg-white">
+                            {user.name} ({user.email}) - SAP: {studentDetails?.profile?.sap_id || "N/A"}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+                <p className="font-medium mt-4">Teacher Recipients:</p>
+                <input
+                  type="text"
+                  placeholder="Search Teachers by Name/Email..."
+                  className="border p-2 rounded w-full mb-3"
+                  value={detailedTeacherSearch}
+                  onChange={(e) => setDetailedTeacherSearch(e.target.value)}
+                />
+                {(() => {
+                  let teacherRecipients: User[] = [];
+                  if (detailedAnnouncement.targetUsers && detailedAnnouncement.targetUsers.length > 0) {
+                    if (typeof detailedAnnouncement.targetUsers[0] === "object" && "name" in detailedAnnouncement.targetUsers[0]) {
+                      teacherRecipients = detailedAnnouncement.targetUsers.filter(
+                        (user) =>
+                          teachers.some((t) => t._id === user._id) &&
+                          (
+                            user.name.toLowerCase().includes(detailedTeacherSearch.toLowerCase()) ||
+                            user.email.toLowerCase().includes(detailedTeacherSearch.toLowerCase())
+                          )
+                      );
+                    } else {
+                      teacherRecipients = teachers.filter((t) => detailedAnnouncement.targetUsers!.includes(t._id));
+                      teacherRecipients = teacherRecipients.filter(
+                        (user) =>
+                          user.name.toLowerCase().includes(detailedTeacherSearch.toLowerCase()) ||
+                          user.email.toLowerCase().includes(detailedTeacherSearch.toLowerCase())
+                      );
+                    }
+                  }
+                  return (
+                    <div className="space-y-3">
+                      {teacherRecipients.map((user) => (
+                        <div key={user._id} className="p-3 border rounded-md shadow-sm bg-white">
+                          {user.name} ({user.email})
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
             )}
             {detailedAnnouncement.attachments && detailedAnnouncement.attachments.length > 0 && (
               <div className="mb-4">
                 <p className="font-medium">Attachments:</p>
-                <ul className="list-disc list-inside">
+                <div className="space-y-2 mt-2">
                   {detailedAnnouncement.attachments.map((att, index) => (
-                    <li key={index}>
+                    <div key={index} className="p-2 border rounded-md shadow-sm">
                       <a
                         href={`http://localhost:5001/api/attachments/${att.filePath}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-blue-500 underline"
+                        className="text-blue-500 hover:text-blue-600 transition-colors duration-200"
                       >
                         {att.filename}
                       </a>
-                    </li>
+                    </div>
                   ))}
-                </ul>
+                </div>
               </div>
             )}
             <div className="flex justify-end">
