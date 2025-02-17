@@ -98,7 +98,7 @@ const AnnouncementsPage: React.FC = () => {
     attachmentsEnabled: false,
     attachments: [],
   });
-  // NEW: State to hold existing attachments when editing
+  // State to hold existing attachments when editing
   const [existingAttachments, setExistingAttachments] = useState<Attachment[]>([]);
 
   const [classesList, setClassesList] = useState<Class[]>([]);
@@ -120,25 +120,23 @@ const AnnouncementsPage: React.FC = () => {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [detailedAnnouncement, setDetailedAnnouncement] = useState<Announcement | null>(null);
   const [recipientSearch, setRecipientSearch] = useState("");
-// For filtering in student modal
-const [studentSearch, setStudentSearch] = useState("");
-const [searchBy, setSearchBy] = useState("name"); // default filter
+  // For filtering in student modal
+  const [studentSearch, setStudentSearch] = useState("");
+  const [searchBy, setSearchBy] = useState("name"); // default filter
 
-// For filtering in teacher modal
-const [teacherSearch, setTeacherSearch] = useState("");
-const [searchByTeacher, setSearchByTeacher] = useState("name");
+  // For filtering in teacher modal
+  const [teacherSearch, setTeacherSearch] = useState("");
+  const [searchByTeacher, setSearchByTeacher] = useState("name");
 
-// For toggling filters display in modals (shared by both modals if desired)
-const [showFilters, setShowFilters] = useState(false);
-// For student filtering:
-const [studentNameSearch, setStudentNameSearch] = useState("");
-const [studentEmailSearch, setStudentEmailSearch] = useState("");
-const [studentSapIdSearch, setStudentSapIdSearch] = useState("");
-// Teacher filter states:
-const [teacherNameSearch, setTeacherNameSearch] = useState("");
-const [teacherEmailSearch, setTeacherEmailSearch] = useState("");
-// Toggle filters (you can share this with students or have a separate one if needed)
-
+  // For toggling filters display in modals
+  const [showFilters, setShowFilters] = useState(false);
+  // For student filtering:
+  const [studentNameSearch, setStudentNameSearch] = useState("");
+  const [studentEmailSearch, setStudentEmailSearch] = useState("");
+  const [studentSapIdSearch, setStudentSapIdSearch] = useState("");
+  // Teacher filter states:
+  const [teacherNameSearch, setTeacherNameSearch] = useState("");
+  const [teacherEmailSearch, setTeacherEmailSearch] = useState("");
 
   useEffect(() => {
     fetchAnnouncements();
@@ -152,6 +150,25 @@ const [teacherEmailSearch, setTeacherEmailSearch] = useState("");
       fetchUsers();
     }
   }, [announcementFormData.type]);
+
+  // NEW: When editing an individual announcement, update preselected recipients
+  useEffect(() => {
+    if (
+      editingAnnouncement &&
+      editingAnnouncement.type === "individual" &&
+      editingAnnouncement.targetUsers
+    ) {
+      // Use the loaded lists of students and teachers to determine which recipients are students vs teachers
+      const studentIds = editingAnnouncement.targetUsers
+        .filter((user) => students.some((s) => s._id === user._id))
+        .map((user) => user._id);
+      const teacherIds = editingAnnouncement.targetUsers
+        .filter((user) => teachers.some((t) => t._id === user._id))
+        .map((user) => user._id);
+      setSelectedStudents(studentIds);
+      setSelectedTeachers(teacherIds);
+    }
+  }, [editingAnnouncement, students, teachers]);
 
   const fetchAnnouncements = async () => {
     try {
@@ -254,7 +271,7 @@ const [teacherEmailSearch, setTeacherEmailSearch] = useState("");
     }
   };
 
-  // UPDATED: When editing, load existing attachments
+  // UPDATED: When editing, load existing attachments.
   const handleEdit = (announcement: Announcement) => {
     setEditingAnnouncement(announcement);
     setAnnouncementFormData({
@@ -273,27 +290,24 @@ const [teacherEmailSearch, setTeacherEmailSearch] = useState("");
       attachmentsEnabled: announcement.attachmentsEnabled,
       attachments: [], // New uploads will go here
     });
-    // NEW: Load existing attachments if any
-    if (announcement.attachments) {
-      setExistingAttachments(announcement.attachments);
-    } else {
-      setExistingAttachments([]);
-    }
-    if (announcement.type === "individual" && announcement.targetUsers) {
-      setSelectedStudents(announcement.targetUsers.map((u) => u._id));
-      setSelectedTeachers([]);
-    }
+    // Load existing attachments if any.
+    setExistingAttachments(announcement.attachments ? announcement.attachments : []);
     setShowForm(true);
   };
 
-  // NEW: Handler to remove an existing attachment from the edit form
+  // Handler to remove an existing attachment from the edit form
   const removeAttachment = (filePath: string) => {
     setExistingAttachments(existingAttachments.filter((att) => att.filePath !== filePath));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!announcementFormData.title || !announcementFormData.content || !announcementFormData.type || !announcementFormData.publishDate) {
+    if (
+      !announcementFormData.title ||
+      !announcementFormData.content ||
+      !announcementFormData.type ||
+      !announcementFormData.publishDate
+    ) {
       alert("Please fill all required fields.");
       return;
     }
@@ -309,11 +323,19 @@ const [teacherEmailSearch, setTeacherEmailSearch] = useState("");
       alert("Please select at least one class.");
       return;
     }
-    if (announcementFormData.type === "individual" && (selectedStudents.length === 0 && selectedTeachers.length === 0)) {
+    if (
+      announcementFormData.type === "individual" &&
+      selectedStudents.length === 0 &&
+      selectedTeachers.length === 0
+    ) {
       alert("Please select at least one recipient.");
       return;
     }
-    if (announcementFormData.attachmentsEnabled && announcementFormData.attachments.length === 0 && existingAttachments.length === 0) {
+    if (
+      announcementFormData.attachmentsEnabled &&
+      announcementFormData.attachments.length === 0 &&
+      existingAttachments.length === 0
+    ) {
       alert("Please attach at least one file.");
       return;
     }
@@ -360,7 +382,6 @@ const [teacherEmailSearch, setTeacherEmailSearch] = useState("");
           ? new Date(announcementFormData.expiryDate).toISOString()
           : new Date("9999-12-31T23:59:59.999Z").toISOString(),
       attachmentsEnabled: announcementFormData.attachmentsEnabled,
-      // NEW: Combine existing attachments (if any) with newly uploaded files.
       attachments: announcementFormData.attachmentsEnabled
         ? editingAnnouncement
           ? [...existingAttachments, ...uploadedFiles]
@@ -418,7 +439,7 @@ const [teacherEmailSearch, setTeacherEmailSearch] = useState("");
         attachmentsEnabled: false,
         attachments: [],
       });
-      setExistingAttachments([]); // NEW: Clear existing attachments
+      setExistingAttachments([]);
       setEditingAnnouncement(null);
       setShowForm(false);
     } catch (error) {
@@ -469,10 +490,10 @@ const [teacherEmailSearch, setTeacherEmailSearch] = useState("");
           onClick={() => {
             setShowForm(true);
             setEditingAnnouncement(null);
-            setExistingAttachments([]); // NEW: Clear any previous attachments
+            setExistingAttachments([]);
           }}
           className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl shadow-md hover:bg-indigo-700 active:scale-95 transition-all duration-300"
-          >
+        >
           + Add Announcement
         </button>
       </div>
@@ -484,8 +505,10 @@ const [teacherEmailSearch, setTeacherEmailSearch] = useState("");
           <p className="text-gray-600">No upcoming announcements.</p>
         ) : (
           upcomingAnnouncements.map((announcement) => (
-<div key={announcement._id} 
-     className="p-5 mb-4 rounded-xl shadow-md bg-white border border-gray-300 transition-transform transform hover:-translate-y-1 hover:shadow-lg hover:border-indigo-500 duration-300">
+            <div
+              key={announcement._id}
+              className="p-5 mb-4 rounded-xl shadow-md bg-white border border-gray-300 transition-transform transform hover:-translate-y-1 hover:shadow-lg hover:border-indigo-500 duration-300"
+            >
               <div className="flex justify-between items-start">
                 <div>
                   <h3 className="text-xl font-semibold text-gray-800">{announcement.title}</h3>
@@ -528,7 +551,12 @@ const [teacherEmailSearch, setTeacherEmailSearch] = useState("");
                     <ul className="list-disc list-inside">
                       {announcement.attachments.map((att, index) => (
                         <li key={index}>
-                          <a href={`http://localhost:5001/api/attachments/${att.filePath}`} target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">
+                          <a
+                            href={`http://localhost:5001/api/attachments/${att.filePath}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-500 underline"
+                          >
                             {att.filename}
                           </a>
                         </li>
@@ -543,7 +571,7 @@ const [teacherEmailSearch, setTeacherEmailSearch] = useState("");
                   setShowDetailModal(true);
                 }}
                 className="mt-3 bg-indigo-600 text-white px-4 py-2 rounded-xl shadow-md hover:bg-indigo-700 hover:shadow-lg active:scale-95 transition-all duration-300"
-                >
+              >
                 View Detailed List
               </button>
             </div>
@@ -569,11 +597,11 @@ const [teacherEmailSearch, setTeacherEmailSearch] = useState("");
                 </div>
                 <div className="flex space-x-2">
                   <Edit
- className="text-indigo-500 cursor-pointer hover:text-indigo-600 transition-all duration-200 transform hover:scale-110" 
+                    className="text-indigo-500 cursor-pointer hover:text-indigo-600 transition-all duration-200 transform hover:scale-110"
                     onClick={() => handleEdit(announcement)}
                   />
                   <Trash
-className="text-red-500 cursor-pointer hover:text-red-600 transition-all duration-200 transform hover:scale-110" 
+                    className="text-red-500 cursor-pointer hover:text-red-600 transition-all duration-200 transform hover:scale-110"
                     onClick={() => {
                       setAnnouncementToDelete(announcement);
                       setShowDeleteModal(true);
@@ -601,7 +629,12 @@ className="text-red-500 cursor-pointer hover:text-red-600 transition-all duratio
                     <ul className="list-disc list-inside">
                       {announcement.attachments.map((att, index) => (
                         <li key={index}>
-                          <a href={`http://localhost:5001/api/attachments/${att.filePath}`} target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">
+                          <a
+                            href={`http://localhost:5001/api/attachments/${att.filePath}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-500 underline"
+                          >
                             {att.filename}
                           </a>
                         </li>
@@ -672,7 +705,12 @@ className="text-red-500 cursor-pointer hover:text-red-600 transition-all duratio
                     <ul className="list-disc list-inside">
                       {announcement.attachments.map((att, index) => (
                         <li key={index}>
-                          <a href={`http://localhost:5001/api/attachments/${att.filePath}`} target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">
+                          <a
+                            href={`http://localhost:5001/api/attachments/${att.filePath}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-500 underline"
+                          >
                             {att.filename}
                           </a>
                         </li>
@@ -952,7 +990,7 @@ className="text-red-500 cursor-pointer hover:text-red-600 transition-all duratio
                   />
                 </div>
               )}
-              {/* NEW: Display Existing Attachments (if editing and they exist) */}
+              {/* Display Existing Attachments (if editing and they exist) */}
               {editingAnnouncement && existingAttachments.length > 0 && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Existing Attachments:</label>
@@ -998,212 +1036,206 @@ className="text-red-500 cursor-pointer hover:text-red-600 transition-all duratio
 
       {/* Student Selection Modal */}
       {showStudentModal && (
-  <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
-    <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-lg relative">
-      <button
-        onClick={() => setShowStudentModal(false)}
-        className="absolute top-2 right-3 text-gray-600 hover:text-gray-900 text-xl"
-      >
-        ❌
-      </button>
-      <h2 className="text-lg font-semibold mb-2">Select Students</h2>
-      
-      {/* Toggle Filters and Clear All button */}
-      <div className="flex items-center mb-3">
-        <button
-          onClick={() => setShowFilters((prev) => !prev)}
-          className={`px-3 py-2 rounded-md w-full transition-colors ${
-            showFilters
-              ? "border border-indigo-500 bg-white text-indigo-600"
-              : "bg-gray-400 text-white hover:bg-gray-600"
-          }`}
-        >
-          {showFilters ? "Hide Filters" : "Show Filters"}
-        </button>
-        {showFilters && (
-          <button
-            onClick={() => {
-              // Clear all student filters
-              setStudentNameSearch("");
-              setStudentEmailSearch("");
-              setStudentSapIdSearch("");
-            }}
-            className="ml-2 px-3 py-2 rounded-md bg-red-500 text-white"
-          >
-            Clear All
-          </button>
-        )}
-      </div>
-      
-      {/* Filter Inputs (appear only when toggled on) */}
-      {showFilters && (
-        <div className="space-y-2 mb-3">
-          <input
-            type="text"
-            placeholder="Search by Name"
-            className="border p-2 rounded w-full"
-            value={studentNameSearch}
-            onChange={(e) => setStudentNameSearch(e.target.value)}
-          />
-          <input
-            type="text"
-            placeholder="Search by Email"
-            className="border p-2 rounded w-full"
-            value={studentEmailSearch}
-            onChange={(e) => setStudentEmailSearch(e.target.value)}
-          />
-          <input
-            type="text"
-            placeholder="Search by SAP ID"
-            className="border p-2 rounded w-full"
-            value={studentSapIdSearch}
-            onChange={(e) => setStudentSapIdSearch(e.target.value)}
-          />
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-lg relative">
+            <button
+              onClick={() => setShowStudentModal(false)}
+              className="absolute top-2 right-3 text-gray-600 hover:text-gray-900 text-xl"
+            >
+              ❌
+            </button>
+            <h2 className="text-lg font-semibold mb-2">Select Students</h2>
+
+            {/* Toggle Filters and Clear All button */}
+            <div className="flex items-center mb-3">
+              <button
+                onClick={() => setShowFilters((prev) => !prev)}
+                className={`px-3 py-2 rounded-md w-full transition-colors ${
+                  showFilters
+                    ? "border border-indigo-500 bg-white text-indigo-600"
+                    : "bg-gray-400 text-white hover:bg-gray-600"
+                }`}
+              >
+                {showFilters ? "Hide Filters" : "Show Filters"}
+              </button>
+              {showFilters && (
+                <button
+                  onClick={() => {
+                    setStudentNameSearch("");
+                    setStudentEmailSearch("");
+                    setStudentSapIdSearch("");
+                  }}
+                  className="ml-2 px-3 py-2 rounded-md bg-red-500 text-white"
+                >
+                  Clear All
+                </button>
+              )}
+            </div>
+
+            {/* Filter Inputs */}
+            {showFilters && (
+              <div className="space-y-2 mb-3">
+                <input
+                  type="text"
+                  placeholder="Search by Name"
+                  className="border p-2 rounded w-full"
+                  value={studentNameSearch}
+                  onChange={(e) => setStudentNameSearch(e.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="Search by Email"
+                  className="border p-2 rounded w-full"
+                  value={studentEmailSearch}
+                  onChange={(e) => setStudentEmailSearch(e.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="Search by SAP ID"
+                  className="border p-2 rounded w-full"
+                  value={studentSapIdSearch}
+                  onChange={(e) => setStudentSapIdSearch(e.target.value)}
+                />
+              </div>
+            )}
+
+            {/* Filtered Student List */}
+            <ul className="max-h-60 overflow-y-auto border rounded">
+              {students
+                .filter((student) => {
+                  const nameMatch =
+                    studentNameSearch.trim() === "" ||
+                    student.name.toLowerCase().includes(studentNameSearch.toLowerCase());
+                  const emailMatch =
+                    studentEmailSearch.trim() === "" ||
+                    student.email.toLowerCase().includes(studentEmailSearch.toLowerCase());
+                  const sapMatch =
+                    studentSapIdSearch.trim() === "" ||
+                    (student.profile && student.profile.sap_id.toString().includes(studentSapIdSearch));
+                  return nameMatch && emailMatch && sapMatch;
+                })
+                .map((student) => (
+                  <li key={student._id} className="p-2 border-b flex justify-between items-center">
+                    <span>
+                      {student.name} ({student.email}) - {student.profile?.sap_id ?? "N/A"}
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={selectedStudents.includes(student._id)}
+                      onChange={() => toggleStudentSelection(student._id)}
+                    />
+                  </li>
+                ))}
+            </ul>
+
+            <button
+              onClick={() => {
+                setShowFilters(false);
+                setShowStudentModal(false);
+              }}
+              className="mt-3 w-full bg-indigo-600 text-white p-2 rounded"
+            >
+              Confirm Selection
+            </button>
+          </div>
         </div>
       )}
-      
-      {/* Filtered Student List */}
-      <ul className="max-h-60 overflow-y-auto border rounded">
-        {students
-          .filter((student) => {
-            const nameMatch =
-              studentNameSearch.trim() === "" ||
-              student.name.toLowerCase().includes(studentNameSearch.toLowerCase());
-            const emailMatch =
-              studentEmailSearch.trim() === "" ||
-              student.email.toLowerCase().includes(studentEmailSearch.toLowerCase());
-            const sapMatch =
-              studentSapIdSearch.trim() === "" ||
-              (student.profile && student.profile.sap_id.toString().includes(studentSapIdSearch));
-            return nameMatch && emailMatch && sapMatch;
-          })
-          .map((student) => (
-            <li
-              key={student._id}
-              className="p-2 border-b flex justify-between items-center"
-            >
-              <span>
-                {student.name} ({student.email}) -{" "}
-                {student.profile?.sap_id ?? "N/A"}
-              </span>
-              <input
-                type="checkbox"
-                checked={selectedStudents.includes(student._id)}
-                onChange={() => toggleStudentSelection(student._id)}
-              />
-            </li>
-          ))}
-      </ul>
-      
-      <button
-        onClick={() => {
-          setShowFilters(false);
-          setShowStudentModal(false)}}
-        className="mt-3 w-full bg-indigo-600 text-white p-2 rounded"
-      >
-        Confirm Selection
-      </button>
-    </div>
-  </div>
-)}
-
-
 
       {/* Teacher Selection Modal */}
       {showTeacherModal && (
-  <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
-    <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-lg relative">
-      <button
-        onClick={() => setShowTeacherModal(false)}
-        className="absolute top-2 right-3 text-gray-600 hover:text-gray-900 text-xl"
-      >
-        ❌
-      </button>
-      <h2 className="text-lg font-semibold mb-2">Select Teachers</h2>
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-lg relative">
+            <button
+              onClick={() => setShowTeacherModal(false)}
+              className="absolute top-2 right-3 text-gray-600 hover:text-gray-900 text-xl"
+            >
+              ❌
+            </button>
+            <h2 className="text-lg font-semibold mb-2">Select Teachers</h2>
 
-      {/* Toggle Filters & Clear All Button */}
-      <div className="flex items-center mb-3">
-        <button
-          onClick={() => setShowFilters((prev) => !prev)}
-          className={`px-3 py-2 rounded-md w-full transition-colors ${
-            showFilters
-              ? "border border-indigo-500 bg-white text-indigo-600"
-              : "bg-gray-400 text-white hover:bg-gray-600"
-          }`}
-        >
-          {showFilters ? "Hide Filters" : "Show Filters"}
-        </button>
-        {showFilters && (
-          <button
-            onClick={() => {
-              setTeacherNameSearch("");
-              setTeacherEmailSearch("");
-            }}
-            className="ml-2 px-3 py-2 rounded-md bg-red-500 text-white"
-          >
-            Clear All
-          </button>
-        )}
-      </div>
+            {/* Toggle Filters & Clear All Button */}
+            <div className="flex items-center mb-3">
+              <button
+                onClick={() => setShowFilters((prev) => !prev)}
+                className={`px-3 py-2 rounded-md w-full transition-colors ${
+                  showFilters
+                    ? "border border-indigo-500 bg-white text-indigo-600"
+                    : "bg-gray-400 text-white hover:bg-gray-600"
+                }`}
+              >
+                {showFilters ? "Hide Filters" : "Show Filters"}
+              </button>
+              {showFilters && (
+                <button
+                  onClick={() => {
+                    setTeacherNameSearch("");
+                    setTeacherEmailSearch("");
+                  }}
+                  className="ml-2 px-3 py-2 rounded-md bg-red-500 text-white"
+                >
+                  Clear All
+                </button>
+              )}
+            </div>
 
-      {/* Filter Inputs (only shown when toggled) */}
-      {showFilters && (
-        <div className="space-y-2 mb-3">
-          <input
-            type="text"
-            placeholder="Search by Name"
-            className="border p-2 rounded w-full"
-            value={teacherNameSearch}
-            onChange={(e) => setTeacherNameSearch(e.target.value)}
-          />
-          <input
-            type="text"
-            placeholder="Search by Email"
-            className="border p-2 rounded w-full"
-            value={teacherEmailSearch}
-            onChange={(e) => setTeacherEmailSearch(e.target.value)}
-          />
+            {/* Filter Inputs */}
+            {showFilters && (
+              <div className="space-y-2 mb-3">
+                <input
+                  type="text"
+                  placeholder="Search by Name"
+                  className="border p-2 rounded w-full"
+                  value={teacherNameSearch}
+                  onChange={(e) => setTeacherNameSearch(e.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="Search by Email"
+                  className="border p-2 rounded w-full"
+                  value={teacherEmailSearch}
+                  onChange={(e) => setTeacherEmailSearch(e.target.value)}
+                />
+              </div>
+            )}
+
+            {/* Filtered Teacher List */}
+            <ul className="max-h-60 overflow-y-auto border rounded bg-white shadow-md">
+              {teachers
+                .filter((teacher) => {
+                  const nameMatch =
+                    teacherNameSearch.trim() === "" ||
+                    teacher.name.toLowerCase().includes(teacherNameSearch.toLowerCase());
+                  const emailMatch =
+                    teacherEmailSearch.trim() === "" ||
+                    teacher.email.toLowerCase().includes(teacherEmailSearch.toLowerCase());
+                  return nameMatch && emailMatch;
+                })
+                .map((teacher) => (
+                  <li key={teacher._id} className="p-2 border-b flex justify-between items-center">
+                    <span>
+                      {teacher.name} ({teacher.email})
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={selectedTeachers.includes(teacher._id)}
+                      onChange={() => toggleTeacherSelection(teacher._id)}
+                    />
+                  </li>
+                ))}
+            </ul>
+
+            <button
+              onClick={() => {
+                setShowFilters(false);
+                setShowTeacherModal(false);
+              }}
+              className="mt-3 w-full bg-indigo-600 text-white p-2 rounded"
+            >
+              Confirm Selection
+            </button>
+          </div>
         </div>
       )}
-
-      {/* Filtered Teacher List */}
-      <ul className="max-h-60 overflow-y-auto border rounded bg-white shadow-md">
-        {teachers
-          .filter((teacher) => {
-            const nameMatch =
-              teacherNameSearch.trim() === "" ||
-              teacher.name.toLowerCase().includes(teacherNameSearch.toLowerCase());
-            const emailMatch =
-              teacherEmailSearch.trim() === "" ||
-              teacher.email.toLowerCase().includes(teacherEmailSearch.toLowerCase());
-            return nameMatch && emailMatch;
-          })
-          .map((teacher) => (
-            <li key={teacher._id} className="p-2 border-b flex justify-between items-center">
-              <span>
-                {teacher.name} ({teacher.email})
-              </span>
-              <input
-                type="checkbox"
-                checked={selectedTeachers.includes(teacher._id)}
-                onChange={() => toggleTeacherSelection(teacher._id)}
-              />
-            </li>
-          ))}
-      </ul>
-
-      <button
-        onClick={() => {
-          setShowFilters(false);
-          setShowTeacherModal(false)}}
-        className="mt-3 w-full bg-indigo-600 text-white p-2 rounded"
-      >
-        Confirm Selection
-      </button>
-    </div>
-  </div>
-)}
-
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && announcementToDelete && (
