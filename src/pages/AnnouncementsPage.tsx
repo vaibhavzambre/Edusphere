@@ -120,6 +120,25 @@ const AnnouncementsPage: React.FC = () => {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [detailedAnnouncement, setDetailedAnnouncement] = useState<Announcement | null>(null);
   const [recipientSearch, setRecipientSearch] = useState("");
+// For filtering in student modal
+const [studentSearch, setStudentSearch] = useState("");
+const [searchBy, setSearchBy] = useState("name"); // default filter
+
+// For filtering in teacher modal
+const [teacherSearch, setTeacherSearch] = useState("");
+const [searchByTeacher, setSearchByTeacher] = useState("name");
+
+// For toggling filters display in modals (shared by both modals if desired)
+const [showFilters, setShowFilters] = useState(false);
+// For student filtering:
+const [studentNameSearch, setStudentNameSearch] = useState("");
+const [studentEmailSearch, setStudentEmailSearch] = useState("");
+const [studentSapIdSearch, setStudentSapIdSearch] = useState("");
+// Teacher filter states:
+const [teacherNameSearch, setTeacherNameSearch] = useState("");
+const [teacherEmailSearch, setTeacherEmailSearch] = useState("");
+// Toggle filters (you can share this with students or have a separate one if needed)
+
 
   useEffect(() => {
     fetchAnnouncements();
@@ -452,8 +471,8 @@ const AnnouncementsPage: React.FC = () => {
             setEditingAnnouncement(null);
             setExistingAttachments([]); // NEW: Clear any previous attachments
           }}
-          className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
-        >
+          className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl shadow-md hover:bg-indigo-700 active:scale-95 transition-all duration-300"
+          >
           + Add Announcement
         </button>
       </div>
@@ -465,7 +484,8 @@ const AnnouncementsPage: React.FC = () => {
           <p className="text-gray-600">No upcoming announcements.</p>
         ) : (
           upcomingAnnouncements.map((announcement) => (
-            <div key={announcement._id} className="p-4 mb-4 rounded-lg shadow-sm bg-white border border-gray-200">
+<div key={announcement._id} 
+     className="p-5 mb-4 rounded-xl shadow-md bg-white border border-gray-300 transition-transform transform hover:-translate-y-1 hover:shadow-lg hover:border-indigo-500 duration-300">
               <div className="flex justify-between items-start">
                 <div>
                   <h3 className="text-xl font-semibold text-gray-800">{announcement.title}</h3>
@@ -522,8 +542,8 @@ const AnnouncementsPage: React.FC = () => {
                   setDetailedAnnouncement(announcement);
                   setShowDetailModal(true);
                 }}
-                className="mt-2 bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
-              >
+                className="mt-3 bg-indigo-600 text-white px-4 py-2 rounded-xl shadow-md hover:bg-indigo-700 hover:shadow-lg active:scale-95 transition-all duration-300"
+                >
                 View Detailed List
               </button>
             </div>
@@ -549,11 +569,11 @@ const AnnouncementsPage: React.FC = () => {
                 </div>
                 <div className="flex space-x-2">
                   <Edit
-                    className="text-blue-500 cursor-pointer hover:text-blue-600"
+ className="text-indigo-500 cursor-pointer hover:text-indigo-600 transition-all duration-200 transform hover:scale-110" 
                     onClick={() => handleEdit(announcement)}
                   />
                   <Trash
-                    className="text-red-500 cursor-pointer hover:text-red-600"
+className="text-red-500 cursor-pointer hover:text-red-600 transition-all duration-200 transform hover:scale-110" 
                     onClick={() => {
                       setAnnouncementToDelete(announcement);
                       setShowDeleteModal(true);
@@ -978,85 +998,212 @@ const AnnouncementsPage: React.FC = () => {
 
       {/* Student Selection Modal */}
       {showStudentModal && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-lg relative">
-            <button onClick={() => setShowStudentModal(false)} className="absolute top-2 right-3 text-gray-600 hover:text-gray-900 text-xl">
-              ❌
-            </button>
-            <h2 className="text-lg font-semibold mb-2">Select Students</h2>
-            <input
-              type="text"
-              placeholder="Search by name or email"
-              className="border p-2 rounded w-full mb-3"
-              value={recipientSearch}
-              onChange={(e) => setRecipientSearch(e.target.value)}
-            />
-            <ul className="max-h-60 overflow-y-auto border rounded">
-              {students
-                .filter((student) =>
-                  student.name.toLowerCase().includes(recipientSearch.toLowerCase()) ||
-                  student.email.toLowerCase().includes(recipientSearch.toLowerCase())
-                )
-                .map((student) => (
-                  <li key={student._id} className="p-2 border-b flex justify-between items-center">
-                    <span>
-                      {student.name} ({student.email})
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={selectedStudents.includes(student._id)}
-                      onChange={() => toggleStudentSelection(student._id)}
-                    />
-                  </li>
-                ))}
-            </ul>
-            <button onClick={() => setShowStudentModal(false)} className="mt-3 w-full bg-indigo-600 text-white p-2 rounded">
-              Confirm Selection
-            </button>
-          </div>
+  <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
+    <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-lg relative">
+      <button
+        onClick={() => setShowStudentModal(false)}
+        className="absolute top-2 right-3 text-gray-600 hover:text-gray-900 text-xl"
+      >
+        ❌
+      </button>
+      <h2 className="text-lg font-semibold mb-2">Select Students</h2>
+      
+      {/* Toggle Filters and Clear All button */}
+      <div className="flex items-center mb-3">
+        <button
+          onClick={() => setShowFilters((prev) => !prev)}
+          className={`px-3 py-2 rounded-md w-full transition-colors ${
+            showFilters
+              ? "border border-indigo-500 bg-white text-indigo-600"
+              : "bg-gray-400 text-white hover:bg-gray-600"
+          }`}
+        >
+          {showFilters ? "Hide Filters" : "Show Filters"}
+        </button>
+        {showFilters && (
+          <button
+            onClick={() => {
+              // Clear all student filters
+              setStudentNameSearch("");
+              setStudentEmailSearch("");
+              setStudentSapIdSearch("");
+            }}
+            className="ml-2 px-3 py-2 rounded-md bg-red-500 text-white"
+          >
+            Clear All
+          </button>
+        )}
+      </div>
+      
+      {/* Filter Inputs (appear only when toggled on) */}
+      {showFilters && (
+        <div className="space-y-2 mb-3">
+          <input
+            type="text"
+            placeholder="Search by Name"
+            className="border p-2 rounded w-full"
+            value={studentNameSearch}
+            onChange={(e) => setStudentNameSearch(e.target.value)}
+          />
+          <input
+            type="text"
+            placeholder="Search by Email"
+            className="border p-2 rounded w-full"
+            value={studentEmailSearch}
+            onChange={(e) => setStudentEmailSearch(e.target.value)}
+          />
+          <input
+            type="text"
+            placeholder="Search by SAP ID"
+            className="border p-2 rounded w-full"
+            value={studentSapIdSearch}
+            onChange={(e) => setStudentSapIdSearch(e.target.value)}
+          />
         </div>
       )}
+      
+      {/* Filtered Student List */}
+      <ul className="max-h-60 overflow-y-auto border rounded">
+        {students
+          .filter((student) => {
+            const nameMatch =
+              studentNameSearch.trim() === "" ||
+              student.name.toLowerCase().includes(studentNameSearch.toLowerCase());
+            const emailMatch =
+              studentEmailSearch.trim() === "" ||
+              student.email.toLowerCase().includes(studentEmailSearch.toLowerCase());
+            const sapMatch =
+              studentSapIdSearch.trim() === "" ||
+              (student.profile && student.profile.sap_id.toString().includes(studentSapIdSearch));
+            return nameMatch && emailMatch && sapMatch;
+          })
+          .map((student) => (
+            <li
+              key={student._id}
+              className="p-2 border-b flex justify-between items-center"
+            >
+              <span>
+                {student.name} ({student.email}) -{" "}
+                {student.profile?.sap_id ?? "N/A"}
+              </span>
+              <input
+                type="checkbox"
+                checked={selectedStudents.includes(student._id)}
+                onChange={() => toggleStudentSelection(student._id)}
+              />
+            </li>
+          ))}
+      </ul>
+      
+      <button
+        onClick={() => {
+          setShowFilters(false);
+          setShowStudentModal(false)}}
+        className="mt-3 w-full bg-indigo-600 text-white p-2 rounded"
+      >
+        Confirm Selection
+      </button>
+    </div>
+  </div>
+)}
+
+
 
       {/* Teacher Selection Modal */}
       {showTeacherModal && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-lg relative">
-            <button onClick={() => setShowTeacherModal(false)} className="absolute top-2 right-3 text-gray-600 hover:text-gray-900 text-xl">
-              ❌
-            </button>
-            <h2 className="text-lg font-semibold mb-2">Select Teachers</h2>
-            <input
-              type="text"
-              placeholder="Search by name or email"
-              className="border p-2 rounded w-full mb-3"
-              value={recipientSearch}
-              onChange={(e) => setRecipientSearch(e.target.value)}
-            />
-            <ul className="max-h-60 overflow-y-auto border rounded">
-              {teachers
-                .filter((teacher) =>
-                  teacher.name.toLowerCase().includes(recipientSearch.toLowerCase()) ||
-                  teacher.email.toLowerCase().includes(recipientSearch.toLowerCase())
-                )
-                .map((teacher) => (
-                  <li key={teacher._id} className="p-2 border-b flex justify-between items-center">
-                    <span>
-                      {teacher.name} ({teacher.email})
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={selectedTeachers.includes(teacher._id)}
-                      onChange={() => toggleTeacherSelection(teacher._id)}
-                    />
-                  </li>
-                ))}
-            </ul>
-            <button onClick={() => setShowTeacherModal(false)} className="mt-3 w-full bg-indigo-600 text-white p-2 rounded">
-              Confirm Selection
-            </button>
-          </div>
+  <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
+    <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-lg relative">
+      <button
+        onClick={() => setShowTeacherModal(false)}
+        className="absolute top-2 right-3 text-gray-600 hover:text-gray-900 text-xl"
+      >
+        ❌
+      </button>
+      <h2 className="text-lg font-semibold mb-2">Select Teachers</h2>
+
+      {/* Toggle Filters & Clear All Button */}
+      <div className="flex items-center mb-3">
+        <button
+          onClick={() => setShowFilters((prev) => !prev)}
+          className={`px-3 py-2 rounded-md w-full transition-colors ${
+            showFilters
+              ? "border border-indigo-500 bg-white text-indigo-600"
+              : "bg-gray-400 text-white hover:bg-gray-600"
+          }`}
+        >
+          {showFilters ? "Hide Filters" : "Show Filters"}
+        </button>
+        {showFilters && (
+          <button
+            onClick={() => {
+              setTeacherNameSearch("");
+              setTeacherEmailSearch("");
+            }}
+            className="ml-2 px-3 py-2 rounded-md bg-red-500 text-white"
+          >
+            Clear All
+          </button>
+        )}
+      </div>
+
+      {/* Filter Inputs (only shown when toggled) */}
+      {showFilters && (
+        <div className="space-y-2 mb-3">
+          <input
+            type="text"
+            placeholder="Search by Name"
+            className="border p-2 rounded w-full"
+            value={teacherNameSearch}
+            onChange={(e) => setTeacherNameSearch(e.target.value)}
+          />
+          <input
+            type="text"
+            placeholder="Search by Email"
+            className="border p-2 rounded w-full"
+            value={teacherEmailSearch}
+            onChange={(e) => setTeacherEmailSearch(e.target.value)}
+          />
         </div>
       )}
+
+      {/* Filtered Teacher List */}
+      <ul className="max-h-60 overflow-y-auto border rounded bg-white shadow-md">
+        {teachers
+          .filter((teacher) => {
+            const nameMatch =
+              teacherNameSearch.trim() === "" ||
+              teacher.name.toLowerCase().includes(teacherNameSearch.toLowerCase());
+            const emailMatch =
+              teacherEmailSearch.trim() === "" ||
+              teacher.email.toLowerCase().includes(teacherEmailSearch.toLowerCase());
+            return nameMatch && emailMatch;
+          })
+          .map((teacher) => (
+            <li key={teacher._id} className="p-2 border-b flex justify-between items-center">
+              <span>
+                {teacher.name} ({teacher.email})
+              </span>
+              <input
+                type="checkbox"
+                checked={selectedTeachers.includes(teacher._id)}
+                onChange={() => toggleTeacherSelection(teacher._id)}
+              />
+            </li>
+          ))}
+      </ul>
+
+      <button
+        onClick={() => {
+          setShowFilters(false);
+          setShowTeacherModal(false)}}
+        className="mt-3 w-full bg-indigo-600 text-white p-2 rounded"
+      >
+        Confirm Selection
+      </button>
+    </div>
+  </div>
+)}
+
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && announcementToDelete && (
