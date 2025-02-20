@@ -84,6 +84,7 @@ const AnnouncementsPage: React.FC = () => {
   const [showForm, setShowForm] = useState(false);
   const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null);
   const [successMessage, setSuccessMessage] = useState("");
+  const [deleteSuccessMessage, setDeleteSuccessMessage] = useState("");
   const [announcementFormData, setAnnouncementFormData] = useState<AnnouncementFormData>({
     title: "",
     content: "",
@@ -116,13 +117,27 @@ const AnnouncementsPage: React.FC = () => {
   const [detailedAnnouncement, setDetailedAnnouncement] = useState<Announcement | null>(null);
   const [recipientSearch, setRecipientSearch] = useState("");
 
-  // Filter states for modals
+  // Filter states for student/teacher modals (unchanged)
   const [studentNameSearch, setStudentNameSearch] = useState("");
   const [studentEmailSearch, setStudentEmailSearch] = useState("");
   const [studentSapIdSearch, setStudentSapIdSearch] = useState("");
   const [teacherNameSearch, setTeacherNameSearch] = useState("");
   const [teacherEmailSearch, setTeacherEmailSearch] = useState("");
   const [showFilters, setShowFilters] = useState(false);
+
+  // New: Filter state for announcements
+  const [announcementFilter, setAnnouncementFilter] = useState({
+    title: "",
+    content: "",
+    type: "",
+    startDate: "",
+    endDate: "",
+    createdBy: "",
+    status: "all"
+  });
+
+  // New: Toggle for announcement filter card
+  const [showAnnouncementFilters, setShowAnnouncementFilters] = useState(false);
 
   const [detailedStudentSearch, setDetailedStudentSearch] = useState("");
   const [detailedTeacherSearch, setDetailedTeacherSearch] = useState("");
@@ -257,10 +272,11 @@ const AnnouncementsPage: React.FC = () => {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
         },
       });
-      if (!response.ok) throw new Error("Failed to delete announcement");
+      if (!response.ok) throw new Error("Failed to fetch announcements");
       setAnnouncements((prev) => prev.filter((a) => a._id !== announcementToDelete._id));
       setShowDeleteModal(false);
       setAnnouncementToDelete(null);
+      setDeleteSuccessMessage("Announcement deleted successfully!");
     } catch (error) {
       console.error("Error deleting announcement:", error);
     }
@@ -446,11 +462,32 @@ const AnnouncementsPage: React.FC = () => {
 
   const now = Date.now();
 
-  const upcomingAnnouncements = announcements
+  // NEW: Filtering logic using the announcementFilter state.
+  const filteredAnnouncements = announcements.filter((announcement) => {
+    const matchesTitle = announcement.title.toLowerCase().includes(announcementFilter.title.toLowerCase());
+    const matchesContent = announcement.content.toLowerCase().includes(announcementFilter.content.toLowerCase());
+    const matchesType = announcementFilter.type === "" || announcement.type.toLowerCase().includes(announcementFilter.type.toLowerCase());
+    const matchesCreatedBy = announcement.createdBy?.name.toLowerCase().includes(announcementFilter.createdBy.toLowerCase());
+    const matchesStart = announcementFilter.startDate === "" || new Date(announcement.publishDate) >= new Date(announcementFilter.startDate);
+    const matchesEnd = announcementFilter.endDate === "" || new Date(announcement.publishDate) <= new Date(announcementFilter.endDate);
+    let matchesStatus = true;
+    if (announcementFilter.status && announcementFilter.status !== "all") {
+      if (announcementFilter.status === "active") {
+        matchesStatus = new Date(announcement.publishDate).getTime() <= now && announcement.visible;
+      } else if (announcementFilter.status === "expired") {
+        matchesStatus = new Date(announcement.publishDate).getTime() <= now && !announcement.visible;
+      } else if (announcementFilter.status === "upcoming") {
+        matchesStatus = new Date(announcement.publishDate).getTime() > now;
+      }
+    }
+    return matchesTitle && matchesContent && matchesType && matchesCreatedBy && matchesStart && matchesEnd && matchesStatus;
+  });
+
+  const upcomingAnnouncements = filteredAnnouncements
     .filter((a) => new Date(a.publishDate).getTime() > now)
     .sort((a, b) => new Date(a.publishDate).getTime() - new Date(b.publishDate).getTime());
 
-  const publishedAnnouncements = announcements.filter((a) => new Date(a.publishDate).getTime() <= now);
+  const publishedAnnouncements = filteredAnnouncements.filter((a) => new Date(a.publishDate).getTime() <= now);
 
   const activeAnnouncements = publishedAnnouncements
     .filter((a) => a.visible)
@@ -465,7 +502,7 @@ const AnnouncementsPage: React.FC = () => {
     .sort((a, b) => new Date(b.expiryDate!).getTime() - new Date(a.expiryDate!).getTime());
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
+    <div className="p-6 bg-gray-50 min-h-screen overflow-x-hidden">
       {successMessage && (
         <div className="mb-4 p-4 bg-green-100 border-l-4 border-green-500 text-green-700 rounded flex justify-between items-center">
           <span>{successMessage}</span>
@@ -474,6 +511,18 @@ const AnnouncementsPage: React.FC = () => {
           </button>
         </div>
       )}
+      {deleteSuccessMessage && (
+          <div className="mb-4 p-4 bg-red-100 border-l-4 border-red-500 text-red-700 rounded flex justify-between items-center">
+            <span>{deleteSuccessMessage}</span>
+            <button
+              onClick={() => setDeleteSuccessMessage("")}
+              className="text-red-700 hover:text-red-900"
+            >
+              &times;
+            </button>
+          </div>
+        )}
+
 
       <div className="flex justify-end items-center mb-6">
         <button
@@ -488,6 +537,120 @@ const AnnouncementsPage: React.FC = () => {
         </button>
       </div>
 
+      {/* Toggle Filter Section Button */}
+      <div className="mb-4">
+        <button
+          onClick={() => setShowAnnouncementFilters(!showAnnouncementFilters)}
+          className="bg-indigo-600 text-white px-4 py-2 rounded shadow-md hover:bg-indigo-700 transition-colors duration-300"
+        >
+          {showAnnouncementFilters ? "Hide Filters" : "Show Filters"}
+        </button>
+      </div>
+
+      {/* Filter Announcements Card */}
+      {showAnnouncementFilters && (
+        <div className="mb-6 p-4 bg-gray-100 rounded-md shadow-sm">
+          <h3 className="text-lg font-bold text-gray-700 mb-2">Filter Announcements</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+              <input
+                type="text"
+                placeholder="Enter title"
+                value={announcementFilter.title}
+                onChange={(e) => setAnnouncementFilter({ ...announcementFilter, title: e.target.value })}
+                className="px-3 py-2 border rounded-md w-full"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Content</label>
+              <input
+                type="text"
+                placeholder="Enter content"
+                value={announcementFilter.content}
+                onChange={(e) => setAnnouncementFilter({ ...announcementFilter, content: e.target.value })}
+                className="px-3 py-2 border rounded-md w-full"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+              <input
+                type="text"
+                placeholder="Enter type"
+                value={announcementFilter.type}
+                onChange={(e) => setAnnouncementFilter({ ...announcementFilter, type: e.target.value })}
+                className="px-3 py-2 border rounded-md w-full"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Start Date/Time</label>
+              <input
+                type="datetime-local"
+                value={announcementFilter.startDate}
+                onChange={(e) => setAnnouncementFilter({ ...announcementFilter, startDate: e.target.value })}
+                className="px-3 py-2 border rounded-md w-full"
+              />
+              <small className="text-xs text-gray-600">
+                Announcements published on or after this date/time
+              </small>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">End Date/Time</label>
+              <input
+                type="datetime-local"
+                value={announcementFilter.endDate}
+                onChange={(e) => setAnnouncementFilter({ ...announcementFilter, endDate: e.target.value })}
+                className="px-3 py-2 border rounded-md w-full"
+              />
+              <small className="text-xs text-gray-600">
+                Announcements published on or before this date/time
+              </small>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Created By</label>
+              <input
+                type="text"
+                placeholder="Enter creator's name"
+                value={announcementFilter.createdBy}
+                onChange={(e) => setAnnouncementFilter({ ...announcementFilter, createdBy: e.target.value })}
+                className="px-3 py-2 border rounded-md w-full"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+              <select
+                value={announcementFilter.status}
+                onChange={(e) => setAnnouncementFilter({ ...announcementFilter, status: e.target.value })}
+                className="px-3 py-2 border rounded-md w-full"
+              >
+                <option value="all">All</option>
+                <option value="active">Active</option>
+                <option value="expired">Expired</option>
+                <option value="upcoming">Upcoming</option>
+              </select>
+            </div>
+          </div>
+          <div className="mt-3">
+            <button
+              onClick={() =>
+                setAnnouncementFilter({
+                  title: "",
+                  content: "",
+                  type: "",
+                  startDate: "",
+                  endDate: "",
+                  createdBy: "",
+                  status: "all",
+                })
+              }
+              className="bg-red-500 text-white px-3 py-2 rounded shadow-md hover:bg-red-600 transition-colors duration-300"
+            >
+              Clear All Filters
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Upcoming Announcements */}
       <div className="mb-8">
         <h2 className="text-2xl font-semibold text-gray-800 mb-4">Upcoming Announcements</h2>
@@ -498,19 +661,21 @@ const AnnouncementsPage: React.FC = () => {
             {upcomingAnnouncements.map((announcement) => (
               <div
                 key={announcement._id}
-                className="w-full h-80 p-5 rounded-xl shadow-md bg-white border border-gray-300 transition-transform transform hover:-translate-y-1 hover:shadow-lg hover:border-indigo-500 duration-300"
+                className="w-full sm:h-auto md:h-80 p-5 rounded-xl shadow-md bg-white border border-gray-300 
+             transition-transform transform hover:-translate-y-1 hover:shadow-lg hover:border-indigo-500 
+             duration-300"
               >
                 <div className="flex flex-col h-full">
-                  {/* Header with centered title */}
+                  {/* Header with responsive centered title */}
                   <div className="relative">
                     <div className="text-center pr-12">
-                      <h3 className="text-xl md:text-2xl font-bold text-gray-800 break-words">
+                      <h3 className="text-base sm:text-lg md:text-2xl font-bold text-gray-800 overflow-hidden whitespace-nowrap text-ellipsis">
                         {announcement.title}
                       </h3>
                     </div>
                     <div className="absolute top-0 right-0 flex space-x-2">
                       <Edit
-                        className="text-indigo-500 cursor-pointer hover:text-indigo-600"
+                        className="text-indigo-600 cursor-pointer hover:text-indigo-700"
                         onClick={() => handleEdit(announcement)}
                       />
                       <Trash
@@ -528,12 +693,16 @@ const AnnouncementsPage: React.FC = () => {
                     <div className="mt-4 flex flex-row justify-around items-center">
                       <div className="flex items-center gap-1">
                         <span className="font-bold text-sm text-gray-700">Type:</span>
-                        <span className="text-sm text-gray-600">{announcement.type === "global" ? "Global" : announcement.type}</span>
+                        <span className="text-sm text-gray-600">
+                          {announcement.type === "global" ? "Global" : announcement.type}
+                        </span>
                       </div>
                       <div className="flex items-center gap-1">
                         <span className="font-bold text-sm text-gray-700">Publish Date:</span>
                         <span className="text-sm text-gray-600">
-                          {new Date(announcement.publishDate).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+                          {new Date(announcement.publishDate).toLocaleString("en-IN", {
+                            timeZone: "Asia/Kolkata",
+                          })}
                         </span>
                       </div>
                       <div className="flex items-center gap-1">
@@ -541,7 +710,9 @@ const AnnouncementsPage: React.FC = () => {
                         <span className="text-sm text-gray-600">
                           {announcement.expiryType === "permanent"
                             ? "Permanent"
-                            : new Date(announcement.expiryDate!).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+                            : new Date(announcement.expiryDate!).toLocaleString("en-IN", {
+                                timeZone: "Asia/Kolkata",
+                              })}
                         </span>
                       </div>
                       <div className="flex items-center gap-1">
@@ -556,7 +727,7 @@ const AnnouncementsPage: React.FC = () => {
                           {announcement.attachments.map((att, index) => (
                             <div
                               key={index}
-                              className="cursor-pointer text-indigo-500 font-medium hover:text-indigo-600 p-1 border rounded-md transition-colors duration-200"
+                              className="cursor-pointer text-indigo-600 font-medium hover:text-indigo-700 p-1 border rounded-md transition-colors duration-200"
                             >
                               <a
                                 href={`http://localhost:5001/api/attachments/${att.filePath}`}
@@ -571,7 +742,7 @@ const AnnouncementsPage: React.FC = () => {
                       </div>
                     )}
                   </div>
-                  {/* Footer Button (View Details) aligned to left */}
+                  {/* Footer Button aligned to left */}
                   <button
                     onClick={() => {
                       setDetailedAnnouncement(announcement);
@@ -598,23 +769,25 @@ const AnnouncementsPage: React.FC = () => {
             {activeAnnouncements.map((announcement) => (
               <div
                 key={announcement._id}
-                className="w-full h-80 p-5 rounded-xl shadow-md bg-white border border-gray-300 transition-transform transform hover:-translate-y-1 hover:shadow-lg hover:border-indigo-500 duration-300"
+                className="w-full sm:h-auto md:h-80 p-5 rounded-xl shadow-md bg-white border border-gray-300 
+             transition-transform transform hover:-translate-y-1 hover:shadow-lg hover:border-indigo-500 
+             duration-300"
               >
                 <div className="flex flex-col h-full">
-                  {/* Header with centered title */}
+                  {/* Header with responsive centered title */}
                   <div className="relative">
                     <div className="text-center pr-12">
-                      <h3 className="text-xl md:text-2xl font-bold text-gray-800 break-words">
+                      <h3 className="text-base sm:text-lg md:text-2xl font-bold text-gray-800 overflow-hidden whitespace-nowrap text-ellipsis">
                         {announcement.title}
                       </h3>
                     </div>
                     <div className="absolute top-0 right-0 flex space-x-2">
                       <Edit
-                        className="text-indigo-500 cursor-pointer hover:text-indigo-600 transition-all duration-200 transform hover:scale-110"
+                        className="text-indigo-600 cursor-pointer hover:text-indigo-700"
                         onClick={() => handleEdit(announcement)}
                       />
                       <Trash
-                        className="text-red-500 cursor-pointer hover:text-red-600 transition-all duration-200 transform hover:scale-110"
+                        className="text-red-500 cursor-pointer hover:text-red-600"
                         onClick={() => {
                           setAnnouncementToDelete(announcement);
                           setShowDeleteModal(true);
@@ -628,12 +801,16 @@ const AnnouncementsPage: React.FC = () => {
                     <div className="mt-4 flex flex-row justify-around items-center">
                       <div className="flex items-center gap-1">
                         <span className="font-bold text-sm text-gray-700">Type:</span>
-                        <span className="text-sm text-gray-600">{announcement.type === "global" ? "Global" : announcement.type}</span>
+                        <span className="text-sm text-gray-600">
+                          {announcement.type === "global" ? "Global" : announcement.type}
+                        </span>
                       </div>
                       <div className="flex items-center gap-1">
                         <span className="font-bold text-sm text-gray-700">Publish Date:</span>
                         <span className="text-sm text-gray-600">
-                          {new Date(announcement.publishDate).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+                          {new Date(announcement.publishDate).toLocaleString("en-IN", {
+                            timeZone: "Asia/Kolkata",
+                          })}
                         </span>
                       </div>
                       <div className="flex items-center gap-1">
@@ -641,7 +818,9 @@ const AnnouncementsPage: React.FC = () => {
                         <span className="text-sm text-gray-600">
                           {announcement.expiryType === "permanent"
                             ? "Permanent"
-                            : new Date(announcement.expiryDate!).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+                            : new Date(announcement.expiryDate!).toLocaleString("en-IN", {
+                                timeZone: "Asia/Kolkata",
+                              })}
                         </span>
                       </div>
                       <div className="flex items-center gap-1">
@@ -656,7 +835,7 @@ const AnnouncementsPage: React.FC = () => {
                           {announcement.attachments.map((att, index) => (
                             <div
                               key={index}
-                              className="cursor-pointer text-indigo-500 font-medium hover:text-indigo-600 p-1 border rounded-md transition-colors duration-200"
+                              className="cursor-pointer text-indigo-600 font-medium hover:text-indigo-700 p-1 border rounded-md transition-colors duration-200"
                             >
                               <a
                                 href={`http://localhost:5001/api/attachments/${att.filePath}`}
@@ -671,7 +850,7 @@ const AnnouncementsPage: React.FC = () => {
                       </div>
                     )}
                   </div>
-                  {/* Footer Button (View Details) aligned to left */}
+                  {/* Footer Button aligned to left */}
                   <button
                     onClick={() => {
                       setDetailedAnnouncement(announcement);
@@ -698,18 +877,17 @@ const AnnouncementsPage: React.FC = () => {
             {expiredAnnouncements.map((announcement) => (
               <div
                 key={announcement._id}
-                className="w-full h-80 p-5 rounded-xl shadow-md bg-gray-100 border border-gray-300 transition-transform transform hover:-translate-y-1 hover:shadow-lg hover:border-indigo-500 duration-300"
-              >
-                {/* Header with centered title */}
+                className="w-full sm:h-auto md:h-72 p-5 rounded-xl shadow-md bg-gray-100 border border-gray-300 transition-transform transform hover:-translate-y-1 hover:shadow-lg hover:border-indigo-500 duration-300">
+                {/* Header with responsive centered title */}
                 <div className="relative">
                   <div className="text-center pr-12">
-                    <h3 className="text-xl md:text-2xl font-bold text-gray-800 break-words">
+                    <h3 className="text-base sm:text-lg md:text-2xl font-bold text-gray-800 overflow-hidden whitespace-nowrap text-ellipsis">
                       {announcement.title}
                     </h3>
                   </div>
                   <div className="absolute top-0 right-0 flex space-x-2">
                     <Edit
-                      className="text-indigo-500 cursor-pointer hover:text-indigo-600"
+                      className="text-indigo-600 cursor-pointer hover:text-indigo-700"
                       onClick={() => handleEdit(announcement)}
                     />
                     <Trash
@@ -727,12 +905,16 @@ const AnnouncementsPage: React.FC = () => {
                 <div className="mt-4 flex flex-row justify-around items-center">
                   <div className="flex items-center gap-1">
                     <span className="font-bold text-sm text-gray-700">Type:</span>
-                    <span className="text-sm text-gray-600">{announcement.type === "global" ? "Global" : announcement.type}</span>
+                    <span className="text-sm text-gray-600">
+                      {announcement.type === "global" ? "Global" : announcement.type}
+                    </span>
                   </div>
                   <div className="flex items-center gap-1">
                     <span className="font-bold text-sm text-gray-700">Publish Date:</span>
                     <span className="text-sm text-gray-600">
-                      {new Date(announcement.publishDate).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+                      {new Date(announcement.publishDate).toLocaleString("en-IN", {
+                        timeZone: "Asia/Kolkata",
+                      })}
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
@@ -740,7 +922,9 @@ const AnnouncementsPage: React.FC = () => {
                     <span className="text-sm text-gray-600">
                       {announcement.expiryType === "permanent"
                         ? "Permanent"
-                        : new Date(announcement.expiryDate!).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+                        : new Date(announcement.expiryDate!).toLocaleString("en-IN", {
+                            timeZone: "Asia/Kolkata",
+                          })}
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
@@ -755,7 +939,7 @@ const AnnouncementsPage: React.FC = () => {
                       {announcement.attachments.map((att, index) => (
                         <div
                           key={index}
-                          className="cursor-pointer text-indigo-500 font-medium hover:text-indigo-600 p-1 border rounded-md transition-colors duration-200"
+                          className="cursor-pointer text-indigo-600 font-medium hover:text-indigo-700 p-1 border rounded-md transition-colors duration-200"
                         >
                           <a
                             href={`http://localhost:5001/api/attachments/${att.filePath}`}
@@ -910,7 +1094,7 @@ const AnnouncementsPage: React.FC = () => {
                         href={`http://localhost:5001/api/attachments/${att.filePath}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-indigo-500 hover:text-indigo-600 transition-colors duration-200"
+                        className="text-indigo-600 hover:text-indigo-700 transition-colors duration-200"
                       >
                         {att.filename}
                       </a>
@@ -932,7 +1116,9 @@ const AnnouncementsPage: React.FC = () => {
       {showForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-start pt-10">
           <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <h2 className="text-xl font-bold mb-4">{editingAnnouncement ? "Update Announcement" : "Create Announcement"}</h2>
+            <h2 className="text-xl font-bold mb-4">
+              {editingAnnouncement ? "Update Announcement" : "Create Announcement"}
+            </h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               {/* Title */}
               <div>
@@ -1164,7 +1350,7 @@ const AnnouncementsPage: React.FC = () => {
                           href={`http://localhost:5001/api/attachments/${att.filePath}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-indigo-500"
+                          className="text-indigo-600"
                         >
                           {att.filename}
                         </a>
@@ -1209,7 +1395,7 @@ const AnnouncementsPage: React.FC = () => {
               <button
                 onClick={() => setShowFilters((prev) => !prev)}
                 className={`px-3 py-2 rounded-md w-full transition-colors ${
-                  showFilters ? "border border-indigo-500 bg-white text-indigo-600" : "bg-gray-400 text-white hover:bg-gray-600"
+                  showFilters ? "border border-indigo-600 bg-white text-indigo-600" : "bg-gray-400 text-white hover:bg-gray-600"
                 }`}
               >
                 {showFilters ? "Hide Filters" : "Show Filters"}
@@ -1270,7 +1456,7 @@ const AnnouncementsPage: React.FC = () => {
               <button
                 onClick={() => setShowFilters((prev) => !prev)}
                 className={`px-3 py-2 rounded-md w-full transition-colors ${
-                  showFilters ? "border border-indigo-500 bg-white text-indigo-600" : "bg-gray-400 text-white hover:bg-gray-600"
+                  showFilters ? "border border-indigo-600 bg-white text-indigo-600" : "bg-gray-400 text-white hover:bg-gray-600"
                 }`}
               >
                 {showFilters ? "Hide Filters" : "Show Filters"}
@@ -1462,7 +1648,7 @@ const AnnouncementsPage: React.FC = () => {
                         href={`http://localhost:5001/api/attachments/${att.filePath}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-indigo-500 hover:text-indigo-600 transition-colors duration-200"
+                        className="text-indigo-600 hover:text-indigo-700 transition-colors duration-200"
                       >
                         {att.filename}
                       </a>
