@@ -1,5 +1,15 @@
 import React, { useState, useEffect } from "react";
 
+interface Attachment {
+  filePath: string;
+  filename: string;
+  contentType: string;
+}
+
+interface UserInfo {
+  name: string;
+}
+
 interface Announcement {
   _id: string;
   title: string;
@@ -7,13 +17,9 @@ interface Announcement {
   publishDate: string;
   expiryDate?: string;
   expiryType: string;
-  createdBy: { name: string };
+  createdBy: UserInfo;
   visible: boolean;
-  attachments?: {
-    filePath: string;
-    filename: string;
-    contentType: string;
-  }[];
+  attachments?: Attachment[];
 }
 
 const AnnouncementsStudent: React.FC = () => {
@@ -22,7 +28,8 @@ const AnnouncementsStudent: React.FC = () => {
 
   useEffect(() => {
     fetchAnnouncements();
-    const interval = setInterval(fetchAnnouncements, 1000); // Fetch every 1 second
+    // Re-fetch every 1 second
+    const interval = setInterval(fetchAnnouncements, 1000);
     return () => clearInterval(interval);
   }, []);
 
@@ -37,12 +44,16 @@ const AnnouncementsStudent: React.FC = () => {
       });
       if (!response.ok) throw new Error("Failed to fetch announcements");
       const data = await response.json();
-      // Students see only visible announcements
+
+      // Students see only visible announcements, sorted by newest first
       const visibleData = data
         .filter((a: Announcement) => a.visible)
-        .sort((a, b) => new Date(b.publishDate).getTime() - new Date(a.publishDate).getTime());
+        .sort(
+          (a: Announcement, b: Announcement) =>
+            new Date(b.publishDate).getTime() - new Date(a.publishDate).getTime()
+        );
+
       setAnnouncements(visibleData);
-      console.log(visibleData);
       setLoading(false);
     } catch (error) {
       console.error("Error fetching announcements:", error);
@@ -51,51 +62,127 @@ const AnnouncementsStudent: React.FC = () => {
   };
 
   return (
-    <div className="p-5">
-      <h1 className="text-2xl font-bold mb-4">Announcements</h1>
+    <div className="p-6 bg-gray-50 min-h-screen overflow-x-hidden">
+      <h1 className="text-2xl font-bold mb-6 text-gray-800">Announcements</h1>
+
       {loading ? (
-        <p>Loading announcements...</p>
+        <p className="text-gray-600">Loading announcements...</p>
       ) : announcements.length === 0 ? (
-        <p>No announcements available.</p>
+        <p className="text-gray-600">No announcements available.</p>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        // SINGLE-COLUMN layout (one card per row), matching admin styling
+        <div className="grid grid-cols-1 gap-6">
           {announcements.map((announcement) => (
-            <div key={announcement._id} className="bg-white shadow-md p-4 rounded-lg">
-              <h3 className="text-lg font-semibold">{announcement.title}</h3>
-              <p className="mb-2">{announcement.content}</p>
-              <div className="text-sm text-gray-700 mb-1">
-                <strong>Created By:</strong> {announcement.createdBy.name}
-              </div>
-              <div className="text-sm text-gray-600 mb-1">
-                <strong>Published:</strong>{" "}
-                {new Date(announcement.publishDate).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
-              </div>
-              <div className="text-sm text-gray-600 mb-1">
-                <strong>Expiry:</strong>{" "}
-                {announcement.expiryType === "permanent"
-                  ? "Permanent"
-                  : new Date(announcement.expiryDate as string).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
-              </div>
-              {/* NEW: Show attachments if present */}
-              {announcement.attachments && announcement.attachments.length > 0 && (
-                <div className="mt-2">
-                  <strong>Attachments:</strong>
-                  <ul className="list-disc list-inside">
-                    {announcement.attachments.map((att, index) => (
-                      <li key={index}>
-                        <a
-                          href={`http://localhost:5001/api/attachments/${att.filePath}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-500 underline"
-                        >
-                          {att.filename}
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
+            <div
+              key={announcement._id}
+              className="
+                w-full
+                sm:h-auto
+                md:h-80
+                p-5
+                rounded-xl
+                shadow-md
+                bg-white
+                border
+                border-gray-300
+                transition-transform
+                transform
+                hover:-translate-y-1
+                hover:shadow-lg
+                hover:border-indigo-500
+                duration-300
+                flex
+                flex-col
+              "
+            >
+              {/* Title area (centered, responsive, truncated if too long) */}
+              <div className="relative">
+                <div className="text-center pr-12">
+                  <h3
+                    className="
+                      text-base
+                      sm:text-lg
+                      md:text-2xl
+                      font-bold
+                      text-gray-800
+                      break-words
+                      overflow-hidden
+                      whitespace-nowrap
+                      text-ellipsis
+                    "
+                  >
+                    {announcement.title}
+                  </h3>
                 </div>
-              )}
+              </div>
+
+              {/* Announcement content + details */}
+              <div className="mt-4 flex-1 overflow-auto">
+                <p className="text-gray-700 text-base leading-relaxed">
+                  {announcement.content}
+                </p>
+
+                {/* Row with Publish Date, Expiry, Created By (mirroring admin style) */}
+                <div className="mt-4 flex flex-row justify-around items-center">
+                  <div className="flex items-center gap-1">
+                    <span className="font-bold text-sm text-gray-700">Created By:</span>
+                    <span className="text-sm text-gray-600">
+                      {announcement.createdBy?.name || "Admin"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="font-bold text-sm text-gray-700">Published:</span>
+                    <span className="text-sm text-gray-600">
+                      {new Date(announcement.publishDate).toLocaleString("en-IN", {
+                        timeZone: "Asia/Kolkata",
+                      })}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="font-bold text-sm text-gray-700">Expiry:</span>
+                    <span className="text-sm text-gray-600">
+                      {announcement.expiryType === "permanent"
+                        ? "Permanent"
+                        : new Date(announcement.expiryDate as string).toLocaleString("en-IN", {
+                            timeZone: "Asia/Kolkata",
+                          })}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Attachments (if any) */}
+                {announcement.attachments && announcement.attachments.length > 0 && (
+                  <div className="mt-2">
+                    <span className="font-bold text-sm">Attachments:</span>
+                    <div className="mt-2 space-y-2">
+                      {announcement.attachments.map((att, index) => (
+                        <div
+                          key={index}
+                          className="
+                            cursor-pointer
+                            text-indigo-600
+                            font-medium
+                            hover:text-indigo-700
+                            p-1
+                            border
+                            rounded-md
+                            transition-colors
+                            duration-200
+                          "
+                        >
+                          <a
+                            href={`http://localhost:5001/api/attachments/${att.filePath}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {att.filename}
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           ))}
         </div>
