@@ -494,87 +494,97 @@ const AnnouncementsPage: React.FC = () => {
         {upcomingAnnouncements.length === 0 ? (
           <p className="text-gray-600">No upcoming announcements.</p>
         ) : (
-          upcomingAnnouncements.map((announcement) => (
-            <div
-              key={announcement._id}
-              className="p-5 mb-4 rounded-xl shadow-md bg-white border border-gray-300 transition-transform transform hover:-translate-y-1 hover:shadow-lg hover:border-indigo-500 duration-300"
-            >
-              {/* UPDATED: Centered title and visually enhanced content */}
-              <div className="relative">
-                <div className="text-center">
-                  <h3 className="text-2xl font-bold text-gray-800">{announcement.title}</h3>
-                </div>
-                <div className="absolute top-0 right-0 flex space-x-2">
-                  <Edit
-                    className="text-blue-500 cursor-pointer hover:text-blue-600"
-                    onClick={() => handleEdit(announcement)}
-                  />
-                  <Trash
-                    className="text-red-500 cursor-pointer hover:text-red-600"
-                    onClick={() => {
-                      setAnnouncementToDelete(announcement);
-                      setShowDeleteModal(true);
-                    }}
-                  />
-                </div>
-              </div>
-              <div className="mt-4">
-                <p className="text-gray-700 text-lg leading-relaxed">{announcement.content}</p>
-              </div>
-              <div className="mt-4 flex flex-wrap gap-4">
-                <div className="flex items-center space-x-1">
-                  <span className="font-semibold text-gray-700">Type:</span>
-                  <span className="text-gray-600">{announcement.type === "global" ? "Global" : announcement.type}</span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <span className="font-semibold text-gray-700">Publish Date:</span>
-                  <span className="text-gray-600">{new Date(announcement.publishDate).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <span className="font-semibold text-gray-700">Expiry:</span>
-                  <span className="text-gray-600">
-                    {announcement.expiryType === "permanent"
-                      ? "Permanent"
-                      : new Date(announcement.expiryDate!).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
-                  </span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <span className="font-semibold text-gray-700">Created By:</span>
-                  <span className="text-gray-600">{announcement.createdBy?.name || "Admin"}</span>
-                </div>
-              </div>
-              {announcement.attachments && announcement.attachments.length > 0 && (
-                <div className="mt-2">
-                  <strong>Attachments:</strong>
-                  <div className="space-y-2 mt-2">
-                    {announcement.attachments.map((att, index) => (
-                      <div
-                        key={index}
-                        className="cursor-pointer text-blue-500 font-medium hover:text-blue-700 p-1 border rounded-md transition-colors duration-200"
-                      >
-                        <a
-                          href={`http://localhost:5001/api/attachments/${att.filePath}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          {att.filename}
-                        </a>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <button
-                onClick={() => {
-                  setDetailedAnnouncement(announcement);
-                  setShowDetailModal(true);
-                }}
-                className="mt-3 bg-indigo-600 text-white px-4 py-2 rounded-xl shadow-md hover:bg-indigo-700 hover:shadow-lg active:scale-95 transition-all duration-300"
+          <div className="grid grid-cols-1 gap-6">
+            {upcomingAnnouncements.map((announcement) => (
+              <div
+                key={announcement._id}
+                className="w-full h-80 p-5 rounded-xl shadow-md bg-white border border-gray-300 transition-transform transform hover:-translate-y-1 hover:shadow-lg hover:border-indigo-500 duration-300"
               >
-                View Detailed List
-              </button>
-            </div>
-          ))
+                <div className="flex flex-col h-full">
+                  {/* Header with centered title */}
+                  <div className="relative">
+                    <div className="text-center pr-12">
+                      <h3 className="text-xl md:text-2xl font-bold text-gray-800 break-words">
+                        {announcement.title}
+                      </h3>
+                    </div>
+                    <div className="absolute top-0 right-0 flex space-x-2">
+                      <Edit
+                        className="text-indigo-500 cursor-pointer hover:text-indigo-600"
+                        onClick={() => handleEdit(announcement)}
+                      />
+                      <Trash
+                        className="text-red-500 cursor-pointer hover:text-red-600"
+                        onClick={() => {
+                          setAnnouncementToDelete(announcement);
+                          setShowDeleteModal(true);
+                        }}
+                      />
+                    </div>
+                  </div>
+                  {/* Scrollable Content */}
+                  <div className="mt-4 flex-1 overflow-auto">
+                    <p className="text-gray-700 text-base leading-relaxed">{announcement.content}</p>
+                    <div className="mt-4 flex flex-row justify-around items-center">
+                      <div className="flex items-center gap-1">
+                        <span className="font-bold text-sm text-gray-700">Type:</span>
+                        <span className="text-sm text-gray-600">{announcement.type === "global" ? "Global" : announcement.type}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="font-bold text-sm text-gray-700">Publish Date:</span>
+                        <span className="text-sm text-gray-600">
+                          {new Date(announcement.publishDate).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="font-bold text-sm text-gray-700">Expiry:</span>
+                        <span className="text-sm text-gray-600">
+                          {announcement.expiryType === "permanent"
+                            ? "Permanent"
+                            : new Date(announcement.expiryDate!).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="font-bold text-sm text-gray-700">Created By:</span>
+                        <span className="text-sm text-gray-600">{announcement.createdBy?.name || "Admin"}</span>
+                      </div>
+                    </div>
+                    {announcement.attachments && announcement.attachments.length > 0 && (
+                      <div className="mt-2">
+                        <span className="font-bold text-sm">Attachments:</span>
+                        <div className="mt-2 space-y-2">
+                          {announcement.attachments.map((att, index) => (
+                            <div
+                              key={index}
+                              className="cursor-pointer text-indigo-500 font-medium hover:text-indigo-600 p-1 border rounded-md transition-colors duration-200"
+                            >
+                              <a
+                                href={`http://localhost:5001/api/attachments/${att.filePath}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                {att.filename}
+                              </a>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {/* Footer Button (View Details) aligned to left */}
+                  <button
+                    onClick={() => {
+                      setDetailedAnnouncement(announcement);
+                      setShowDetailModal(true);
+                    }}
+                    className="mt-3 bg-indigo-600 text-white px-3 py-1 rounded-md shadow-md hover:bg-indigo-700 self-start transition-all duration-300"
+                  >
+                    View Detailed List
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
@@ -584,87 +594,97 @@ const AnnouncementsPage: React.FC = () => {
         {activeAnnouncements.length === 0 ? (
           <p className="text-gray-600">No active announcements.</p>
         ) : (
-          activeAnnouncements.map((announcement) => (
-            <div
-              key={announcement._id}
-              className="p-5 mb-4 rounded-xl shadow-md bg-white border border-gray-300 transition-transform transform hover:-translate-y-1 hover:shadow-lg hover:border-indigo-500 duration-300"
-            >
-              {/* UPDATED: Centered title and enhanced content */}
-              <div className="relative">
-                <div className="text-center">
-                  <h3 className="text-2xl font-bold text-gray-800">{announcement.title}</h3>
-                </div>
-                <div className="absolute top-0 right-0 flex space-x-2">
-                  <Edit
-                    className="text-blue-500 cursor-pointer hover:text-blue-600 transition-all duration-200 transform hover:scale-110"
-                    onClick={() => handleEdit(announcement)}
-                  />
-                  <Trash
-                    className="text-red-500 cursor-pointer hover:text-red-600 transition-all duration-200 transform hover:scale-110"
-                    onClick={() => {
-                      setAnnouncementToDelete(announcement);
-                      setShowDeleteModal(true);
-                    }}
-                  />
-                </div>
-              </div>
-              <div className="mt-4">
-                <p className="text-gray-700 text-lg leading-relaxed">{announcement.content}</p>
-              </div>
-              <div className="mt-4 flex flex-wrap gap-4">
-                <div className="flex items-center space-x-1">
-                  <span className="font-semibold text-gray-700">Type:</span>
-                  <span className="text-gray-600">{announcement.type === "global" ? "Global" : announcement.type}</span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <span className="font-semibold text-gray-700">Publish Date:</span>
-                  <span className="text-gray-600">{new Date(announcement.publishDate).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <span className="font-semibold text-gray-700">Expiry:</span>
-                  <span className="text-gray-600">
-                    {announcement.expiryType === "permanent"
-                      ? "Permanent"
-                      : new Date(announcement.expiryDate!).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
-                  </span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <span className="font-semibold text-gray-700">Created By:</span>
-                  <span className="text-gray-600">{announcement.createdBy?.name || "Admin"}</span>
-                </div>
-              </div>
-              {announcement.attachments && announcement.attachments.length > 0 && (
-                <div className="mt-2">
-                  <strong>Attachments:</strong>
-                  <div className="space-y-2 mt-2">
-                    {announcement.attachments.map((att, index) => (
-                      <div
-                        key={index}
-                        className="cursor-pointer text-blue-500 font-medium hover:text-blue-700 p-1 border rounded-md transition-colors duration-200"
-                      >
-                        <a
-                          href={`http://localhost:5001/api/attachments/${att.filePath}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          {att.filename}
-                        </a>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <button
-                onClick={() => {
-                  setDetailedAnnouncement(announcement);
-                  setShowDetailModal(true);
-                }}
-                className="mt-2 bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
+          <div className="grid grid-cols-1 gap-6">
+            {activeAnnouncements.map((announcement) => (
+              <div
+                key={announcement._id}
+                className="w-full h-80 p-5 rounded-xl shadow-md bg-white border border-gray-300 transition-transform transform hover:-translate-y-1 hover:shadow-lg hover:border-indigo-500 duration-300"
               >
-                View Detailed List
-              </button>
-            </div>
-          ))
+                <div className="flex flex-col h-full">
+                  {/* Header with centered title */}
+                  <div className="relative">
+                    <div className="text-center pr-12">
+                      <h3 className="text-xl md:text-2xl font-bold text-gray-800 break-words">
+                        {announcement.title}
+                      </h3>
+                    </div>
+                    <div className="absolute top-0 right-0 flex space-x-2">
+                      <Edit
+                        className="text-indigo-500 cursor-pointer hover:text-indigo-600 transition-all duration-200 transform hover:scale-110"
+                        onClick={() => handleEdit(announcement)}
+                      />
+                      <Trash
+                        className="text-red-500 cursor-pointer hover:text-red-600 transition-all duration-200 transform hover:scale-110"
+                        onClick={() => {
+                          setAnnouncementToDelete(announcement);
+                          setShowDeleteModal(true);
+                        }}
+                      />
+                    </div>
+                  </div>
+                  {/* Scrollable Content */}
+                  <div className="mt-4 flex-1 overflow-auto">
+                    <p className="text-gray-700 text-base leading-relaxed">{announcement.content}</p>
+                    <div className="mt-4 flex flex-row justify-around items-center">
+                      <div className="flex items-center gap-1">
+                        <span className="font-bold text-sm text-gray-700">Type:</span>
+                        <span className="text-sm text-gray-600">{announcement.type === "global" ? "Global" : announcement.type}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="font-bold text-sm text-gray-700">Publish Date:</span>
+                        <span className="text-sm text-gray-600">
+                          {new Date(announcement.publishDate).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="font-bold text-sm text-gray-700">Expiry:</span>
+                        <span className="text-sm text-gray-600">
+                          {announcement.expiryType === "permanent"
+                            ? "Permanent"
+                            : new Date(announcement.expiryDate!).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="font-bold text-sm text-gray-700">Created By:</span>
+                        <span className="text-sm text-gray-600">{announcement.createdBy?.name || "Admin"}</span>
+                      </div>
+                    </div>
+                    {announcement.attachments && announcement.attachments.length > 0 && (
+                      <div className="mt-2">
+                        <span className="font-bold text-sm">Attachments:</span>
+                        <div className="mt-2 space-y-2">
+                          {announcement.attachments.map((att, index) => (
+                            <div
+                              key={index}
+                              className="cursor-pointer text-indigo-500 font-medium hover:text-indigo-600 p-1 border rounded-md transition-colors duration-200"
+                            >
+                              <a
+                                href={`http://localhost:5001/api/attachments/${att.filePath}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                {att.filename}
+                              </a>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {/* Footer Button (View Details) aligned to left */}
+                  <button
+                    onClick={() => {
+                      setDetailedAnnouncement(announcement);
+                      setShowDetailModal(true);
+                    }}
+                    className="mt-3 bg-indigo-600 text-white px-3 py-1 rounded-md shadow-md hover:bg-indigo-700 self-start transition-all duration-300"
+                  >
+                    View Detailed List
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
@@ -674,87 +694,93 @@ const AnnouncementsPage: React.FC = () => {
         {expiredAnnouncements.length === 0 ? (
           <p className="text-gray-600">No expired announcements.</p>
         ) : (
-          expiredAnnouncements.map((announcement) => (
-            <div
-              key={announcement._id}
-              className="p-5 mb-4 rounded-xl shadow-md bg-gray-100 border border-gray-300 transition-transform transform hover:-translate-y-1 hover:shadow-lg hover:border-indigo-500 duration-300"
-            >
-              {/* UPDATED: Centered title and enhanced content */}
-              <div className="relative">
-                <div className="text-center">
-                  <h3 className="text-2xl font-bold text-gray-800">{announcement.title}</h3>
-                </div>
-                <div className="absolute top-0 right-0 flex space-x-2">
-                  <Edit
-                    className="text-blue-500 cursor-pointer hover:text-blue-600"
-                    onClick={() => handleEdit(announcement)}
-                  />
-                  <Trash
-                    className="text-red-500 cursor-pointer hover:text-red-600"
-                    onClick={() => {
-                      setAnnouncementToDelete(announcement);
-                      setShowDeleteModal(true);
-                    }}
-                  />
-                </div>
-              </div>
-              <div className="mt-4">
-                <p className="text-gray-700 text-lg leading-relaxed">{announcement.content}</p>
-              </div>
-              <div className="mt-4 flex flex-wrap gap-4">
-                <div className="flex items-center space-x-1">
-                  <span className="font-semibold text-gray-700">Type:</span>
-                  <span className="text-gray-600">{announcement.type === "global" ? "Global" : announcement.type}</span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <span className="font-semibold text-gray-700">Publish Date:</span>
-                  <span className="text-gray-600">{new Date(announcement.publishDate).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}</span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <span className="font-semibold text-gray-700">Expiry:</span>
-                  <span className="text-gray-600">
-                    {announcement.expiryType === "permanent"
-                      ? "Permanent"
-                      : new Date(announcement.expiryDate!).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
-                  </span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <span className="font-semibold text-gray-700">Created By:</span>
-                  <span className="text-gray-600">{announcement.createdBy?.name || "Admin"}</span>
-                </div>
-              </div>
-              {announcement.attachments && announcement.attachments.length > 0 && (
-                <div className="mt-2">
-                  <strong>Attachments:</strong>
-                  <div className="space-y-2 mt-2">
-                    {announcement.attachments.map((att, index) => (
-                      <div
-                        key={index}
-                        className="cursor-pointer text-blue-500 font-medium hover:text-blue-700 p-1 border rounded-md transition-colors duration-200"
-                      >
-                        <a
-                          href={`http://localhost:5001/api/attachments/${att.filePath}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          {att.filename}
-                        </a>
-                      </div>
-                    ))}
+          <div className="grid grid-cols-1 gap-6">
+            {expiredAnnouncements.map((announcement) => (
+              <div
+                key={announcement._id}
+                className="w-full h-80 p-5 rounded-xl shadow-md bg-gray-100 border border-gray-300 transition-transform transform hover:-translate-y-1 hover:shadow-lg hover:border-indigo-500 duration-300"
+              >
+                {/* Header with centered title */}
+                <div className="relative">
+                  <div className="text-center pr-12">
+                    <h3 className="text-xl md:text-2xl font-bold text-gray-800 break-words">
+                      {announcement.title}
+                    </h3>
+                  </div>
+                  <div className="absolute top-0 right-0 flex space-x-2">
+                    <Edit
+                      className="text-indigo-500 cursor-pointer hover:text-indigo-600"
+                      onClick={() => handleEdit(announcement)}
+                    />
+                    <Trash
+                      className="text-red-500 cursor-pointer hover:text-red-600"
+                      onClick={() => {
+                        setAnnouncementToDelete(announcement);
+                        setShowDeleteModal(true);
+                      }}
+                    />
                   </div>
                 </div>
-              )}
-              <button
-                onClick={() => {
-                  setDetailedAnnouncement(announcement);
-                  setShowDetailModal(true);
-                }}
-                className="mt-2 bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
-              >
-                View Detailed List
-              </button>
-            </div>
-          ))
+                <div className="mt-4">
+                  <p className="text-gray-700 text-base leading-relaxed">{announcement.content}</p>
+                </div>
+                <div className="mt-4 flex flex-row justify-around items-center">
+                  <div className="flex items-center gap-1">
+                    <span className="font-bold text-sm text-gray-700">Type:</span>
+                    <span className="text-sm text-gray-600">{announcement.type === "global" ? "Global" : announcement.type}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="font-bold text-sm text-gray-700">Publish Date:</span>
+                    <span className="text-sm text-gray-600">
+                      {new Date(announcement.publishDate).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="font-bold text-sm text-gray-700">Expiry:</span>
+                    <span className="text-sm text-gray-600">
+                      {announcement.expiryType === "permanent"
+                        ? "Permanent"
+                        : new Date(announcement.expiryDate!).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="font-bold text-sm text-gray-700">Created By:</span>
+                    <span className="text-sm text-gray-600">{announcement.createdBy?.name || "Admin"}</span>
+                  </div>
+                </div>
+                {announcement.attachments && announcement.attachments.length > 0 && (
+                  <div className="mt-2">
+                    <span className="font-bold text-sm">Attachments:</span>
+                    <div className="mt-2 space-y-2">
+                      {announcement.attachments.map((att, index) => (
+                        <div
+                          key={index}
+                          className="cursor-pointer text-indigo-500 font-medium hover:text-indigo-600 p-1 border rounded-md transition-colors duration-200"
+                        >
+                          <a
+                            href={`http://localhost:5001/api/attachments/${att.filePath}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {att.filename}
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <button
+                  onClick={() => {
+                    setDetailedAnnouncement(announcement);
+                    setShowDetailModal(true);
+                  }}
+                  className="mt-2 bg-indigo-600 text-white px-3 py-1 rounded-md shadow-md hover:bg-indigo-700 self-start transition-all duration-300"
+                >
+                  View Detailed List
+                </button>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
@@ -763,7 +789,7 @@ const AnnouncementsPage: React.FC = () => {
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
           <div
             className="bg-white p-6 rounded-lg shadow-lg w-full max-w-lg overflow-y-auto"
-            style={{ maxHeight: "80vh" }} // UPDATED: Enable scrollbar if content overflows
+            style={{ maxHeight: "80vh" }}
           >
             <h2 className="text-xl font-bold mb-4">Detailed Recipients</h2>
             <p className="mb-4 text-sm text-gray-700">
@@ -806,13 +832,11 @@ const AnnouncementsPage: React.FC = () => {
                       studentRecipients = detailedAnnouncement.targetUsers.filter(
                         (user) =>
                           students.some((s) => s._id === user._id) &&
-                          (
-                            user.name.toLowerCase().includes(detailedStudentSearch.toLowerCase()) ||
+                          (user.name.toLowerCase().includes(detailedStudentSearch.toLowerCase()) ||
                             user.email.toLowerCase().includes(detailedStudentSearch.toLowerCase()) ||
                             (students.find((s) => s._id === user._id)?.profile?.sap_id
                               ?.toString()
-                              .includes(detailedStudentSearch))
-                          )
+                              .includes(detailedStudentSearch)))
                       );
                     } else {
                       studentRecipients = students.filter((s) => detailedAnnouncement.targetUsers!.includes(s._id));
@@ -852,10 +876,8 @@ const AnnouncementsPage: React.FC = () => {
                       teacherRecipients = detailedAnnouncement.targetUsers.filter(
                         (user) =>
                           teachers.some((t) => t._id === user._id) &&
-                          (
-                            user.name.toLowerCase().includes(detailedTeacherSearch.toLowerCase()) ||
-                            user.email.toLowerCase().includes(detailedTeacherSearch.toLowerCase())
-                          )
+                          (user.name.toLowerCase().includes(detailedTeacherSearch.toLowerCase()) ||
+                            user.email.toLowerCase().includes(detailedTeacherSearch.toLowerCase()))
                       );
                     } else {
                       teacherRecipients = teachers.filter((t) => detailedAnnouncement.targetUsers!.includes(t._id));
@@ -888,7 +910,7 @@ const AnnouncementsPage: React.FC = () => {
                         href={`http://localhost:5001/api/attachments/${att.filePath}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-blue-500 hover:text-blue-600 transition-colors duration-200"
+                        className="text-indigo-500 hover:text-indigo-600 transition-colors duration-200"
                       >
                         {att.filename}
                       </a>
@@ -1058,10 +1080,10 @@ const AnnouncementsPage: React.FC = () => {
                     Select Recipients:<span className="text-red-500">*</span>
                   </p>
                   <div className="flex space-x-4">
-                    <button type="button" onClick={() => setShowStudentModal(true)} className="px-3 py-1 bg-indigo-500 text-white rounded">
+                    <button type="button" onClick={() => setShowStudentModal(true)} className="px-3 py-1 bg-indigo-600 text-white rounded">
                       Choose Students
                     </button>
-                    <button type="button" onClick={() => setShowTeacherModal(true)} className="px-3 py-1 bg-indigo-500 text-white rounded">
+                    <button type="button" onClick={() => setShowTeacherModal(true)} className="px-3 py-1 bg-indigo-600 text-white rounded">
                       Choose Teachers
                     </button>
                   </div>
@@ -1142,7 +1164,7 @@ const AnnouncementsPage: React.FC = () => {
                           href={`http://localhost:5001/api/attachments/${att.filePath}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-blue-500 underline"
+                          className="text-indigo-500"
                         >
                           {att.filename}
                         </a>
@@ -1362,13 +1384,11 @@ const AnnouncementsPage: React.FC = () => {
                       studentRecipients = detailedAnnouncement.targetUsers.filter(
                         (user) =>
                           students.some((s) => s._id === user._id) &&
-                          (
-                            user.name.toLowerCase().includes(detailedStudentSearch.toLowerCase()) ||
+                          (user.name.toLowerCase().includes(detailedStudentSearch.toLowerCase()) ||
                             user.email.toLowerCase().includes(detailedStudentSearch.toLowerCase()) ||
                             (students.find((s) => s._id === user._id)?.profile?.sap_id
                               ?.toString()
-                              .includes(detailedStudentSearch))
-                          )
+                              .includes(detailedStudentSearch)))
                       );
                     } else {
                       studentRecipients = students.filter((s) => detailedAnnouncement.targetUsers!.includes(s._id));
@@ -1408,10 +1428,8 @@ const AnnouncementsPage: React.FC = () => {
                       teacherRecipients = detailedAnnouncement.targetUsers.filter(
                         (user) =>
                           teachers.some((t) => t._id === user._id) &&
-                          (
-                            user.name.toLowerCase().includes(detailedTeacherSearch.toLowerCase()) ||
-                            user.email.toLowerCase().includes(detailedTeacherSearch.toLowerCase())
-                          )
+                          (user.name.toLowerCase().includes(detailedTeacherSearch.toLowerCase()) ||
+                            user.email.toLowerCase().includes(detailedTeacherSearch.toLowerCase()))
                       );
                     } else {
                       teacherRecipients = teachers.filter((t) => detailedAnnouncement.targetUsers!.includes(t._id));
@@ -1444,7 +1462,7 @@ const AnnouncementsPage: React.FC = () => {
                         href={`http://localhost:5001/api/attachments/${att.filePath}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-blue-500 hover:text-blue-600 transition-colors duration-200"
+                        className="text-indigo-500 hover:text-indigo-600 transition-colors duration-200"
                       >
                         {att.filename}
                       </a>
