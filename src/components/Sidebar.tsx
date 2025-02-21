@@ -17,6 +17,7 @@ import {
   GraduationCap,
   ClipboardCheck,
   Layers,
+  FileText,
 } from "lucide-react";
 
 const Sidebar: React.FC = () => {
@@ -65,6 +66,8 @@ const Sidebar: React.FC = () => {
           { icon: Briefcase, label: "Jobs", path: "/jobs" },
           { icon: Megaphone, label: "Announcements", path: "/AnnouncementsStudent" },
           { icon: ClipboardCheck, label: "Assignment", path: "/assignments" },
+          { icon: FileText, label: "Resources", path: "/StudentResources" },
+
         ]
       : []),
 
@@ -73,8 +76,9 @@ const Sidebar: React.FC = () => {
       ? [
           { icon: Layers, label: "Classes", path: "/classes" },
           { icon: BookOpen, label: "Subjects", path: "/classes/subjects" },
-          { icon: ClipboardCheck, label: "Assignment", path: "/assignments" },
+          { icon: FileText, label: 'Resources', path: '/TeacherResources' },
           { icon: Megaphone, label: "Announcements", path: "/AnnouncementsTeacher" },
+
         ]
       : []),
 

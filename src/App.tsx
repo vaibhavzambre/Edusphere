@@ -22,6 +22,8 @@ import MySubjects from "./pages/MySubjects";
 import AnnouncementsPage from "./pages/AnnouncementsPage";
 import AnnouncementsStudent from "./pages/AnnouncementsStudent";
 import AnnouncementsTeacher from "./pages/AnnouncementsTeacher";
+import TeacherResources from "./pages/TeacherResources";
+import StudentResources from "./pages/StudentResources";
 
 const mockAttendance = [
   { course: "Web Development", date: "2024-03-10", status: "present" },
@@ -87,6 +89,31 @@ function App() {
             }
           />
           
+          <Route
+            path="/TeacherResources"
+            element={
+              <ProtectedRoute
+                element={
+                  <ProtectedLayout>
+                    <TeacherResources />
+                  </ProtectedLayout>
+                }
+              />
+            }
+          />
+          
+          <Route
+            path="/StudentResources"
+            element={
+              <ProtectedRoute
+                element={
+                  <ProtectedLayout>
+                    <StudentResources />
+                  </ProtectedLayout>
+                }
+              />
+            }
+          />
           <Route
             path="/AnnouncementsPage"
             element={

@@ -12,7 +12,7 @@ import announcementsRouter from "./routes/announcements.js";
 import attachments from "./routes/attachments.js";
 import userRoutes from "./routes/userRoutes.js";
 import fileUpload from "express-fileupload";
-
+import resourceRoutes from "./routes/resourceRoutes.js";
 // Import the announcement cleanup utility to toggle visibility of expired announcements
 import "./utils/announcementCleanup.js";
 
@@ -58,7 +58,7 @@ app.use("/api/teacher", teacherRoutes);
 app.use("/api/student", studentRoutes);
 app.use("/api/announcements", announcementsRouter);
 app.use("/api/users", userRoutes);
-
+app.use("/api/resources",resourceRoutes);
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
 
 export { gfs };
