@@ -36,9 +36,9 @@ router.get("/", async (req, res) => {
   try {
     console.log("Fetching all classes...");
     const classes = await Class.find().sort({ commencement_year: -1 });
-    if (!classes || classes.length === 0) {
-      return res.status(404).json({ message: "No classes found" });
-    }
+    // if (!classes || classes.length === 0) {
+    //   return res.status(404).json({ message: "No classes found" });
+    // }
     console.log("✅ Classes fetched successfully:", classes.length);
     res.status(200).json(classes);
   } catch (error) {

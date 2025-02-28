@@ -1,6 +1,8 @@
+// UPDATED: Modified fetchClasses to handle 404 responses and treat them as an empty array.
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Trash, Edit, XCircle } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 interface NewStudent {
   name: string;
@@ -20,6 +22,7 @@ export default function ManageStudents() {
   const [deleteModal, setDeleteModal] = useState(false);
   const [studentToDelete, setStudentToDelete] = useState<any>(null);
   const [editStudent, setEditStudent] = useState<any>(null);
+  const [showNoClassModal, setShowNoClassModal] = useState(false); // NEW state for no-class modal
 
   const [newStudent, setNewStudent] = useState<NewStudent>({
     name: "",
@@ -34,12 +37,14 @@ export default function ManageStudents() {
     name: "",
     email: "",
     sap_id: "",
-    reg_id: "", // Added
-    class_code: "", // Added
+    reg_id: "",
+    class_code: "",
     course: "",
     specialization: "",
     year: "",
   });
+
+  const navigate = useNavigate();
 
   // Filter students based on multiple fields
   const filteredStudents = students.filter((student) => {
@@ -50,15 +55,12 @@ export default function ManageStudents() {
         student.email?.toLowerCase().includes(filters.email.toLowerCase())) &&
       (!filters.sap_id ||
         student.profile?.sap_id?.toString().includes(filters.sap_id)) &&
-      // Add Reg ID filter
       (!filters.reg_id ||
         student.profile?.reg_id?.toString().includes(filters.reg_id)) &&
-      // Add Class Code filter
       (!filters.class_code ||
         student.profile.class?.class_code
           ?.toString()
           .includes(filters.class_code)) &&
-      // Correct course, specialization, and year paths
       (!filters.course ||
         student.profile.class?.course
           ?.toLowerCase()
@@ -79,13 +81,14 @@ export default function ManageStudents() {
       name: "",
       email: "",
       sap_id: "",
-      reg_id: "", // Added
-      class_code: "", // Added
+      reg_id: "",
+      class_code: "",
       course: "",
       specialization: "",
       year: "",
     });
   };
+
   useEffect(() => {
     fetchStudents();
     fetchClasses();
@@ -94,10 +97,19 @@ export default function ManageStudents() {
   const fetchClasses = async () => {
     try {
       const response = await fetch("http://localhost:5001/api/classes");
-      const data = await response.json();
-      setClasses(data);
+      // UPDATED: If 404, treat it as no classes available.
+      if (response.ok) {
+        const data = await response.json();
+        setClasses(data);
+      } else if (response.status === 404) {
+        setClasses([]);
+      } else {
+        console.error("Error fetching classes:", response.statusText);
+        setClasses([]);
+      }
     } catch (error) {
       console.error("Error fetching classes:", error);
+      setClasses([]);
     }
   };
 
@@ -561,8 +573,37 @@ export default function ManageStudents() {
           </div>
         </div>
       )}
+      {/* NEW: No-Class Modal */}
+      {showNoClassModal && (
+        <div className="fixed inset-0 flex items-center justify-center bg-gray-800 bg-opacity-50">
+          <div className="bg-white p-6 rounded-lg shadow-md w-96">
+            <h3 className="text-lg font-semibold mb-2">No Classes Available</h3>
+            <p className="mb-4">
+              Currently no class exists. You need at least one class to be able to add a new student.
+            </p>
+            <div className="flex justify-end gap-3 mt-4">
+              <button
+                onClick={() => setShowNoClassModal(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                className="btn-primary"
+                onClick={() => {
+                  console.log("Navigating to ManageClasses");
+                  setShowNoClassModal(false);
+                  window.location.href = "/ManageClasses"; // Force redirect
+                }}
+              >
+                Create Class
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-3">
         <h2 className="text-2xl font-bold">Manage Students</h2>
         <div className="w-full md:w-auto flex flex-col md:flex-row gap-3">
           <button
@@ -572,7 +613,13 @@ export default function ManageStudents() {
             {showFilters ? "Hide Filters" : "Show Filters"}
           </button>
           <button
-            onClick={() => setShowModal(true)}
+            onClick={() => {
+              if (classes.length === 0) {
+                setShowNoClassModal(true);
+              } else {
+                setShowModal(true);
+              }
+            }}
             className="w-full md:w-auto px-4 py-2 btn-primary text-white rounded-lg hover:bg-indigo-800 transition-colors"
           >
             + Add Student
@@ -582,7 +629,6 @@ export default function ManageStudents() {
 
       {showFilters && (
         <div className="bg-gray-50 p-4 rounded-lg shadow-md mb-4 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-          {/* Existing and new filter inputs go here */}
           <input
             type="text"
             placeholder="Filter by Name"
@@ -655,11 +701,11 @@ export default function ManageStudents() {
       <div className="bg-white p-6 rounded-lg shadow-md mt-4 overflow-x-auto">
         <h3 className="text-lg font-semibold mb-2">All Students</h3>
         {students.length === 0 ? (
-          <p className="text-gray-500 text-center py-4">No students present.</p> // Shown when there are no students
+          <p className="text-gray-500 text-center py-4">No students present.</p>
         ) : filteredStudents.length === 0 ? (
           <p className="text-gray-500 text-center py-4">
             No matching students found.
-          </p> // Shown when filters return no results
+          </p>
         ) : (
           <div className="w-full overflow-x-auto">
             <table className="min-w-full border-collapse">
