@@ -121,6 +121,9 @@ router.get("/", authMiddleware, async (req, res) => {
 
 /**
  * ✅ UPDATE an Announcement (Admin Only)
+ * UPDATED: Instead of using findByIdAndUpdate, we load the announcement,
+ * update its fields, and then call save() to trigger the pre-save hook,
+ * which recalculates the 'visible' field based on the new dates.
  */
 router.put("/:id", authMiddleware, checkAdmin, async (req, res) => {
   try {
@@ -143,33 +146,34 @@ router.put("/:id", authMiddleware, checkAdmin, async (req, res) => {
       return res.status(400).json({ message: "Missing required fields." });
     }
 
-    const updateData = {
-      title,
-      content,
-      type,
-      roles: roles || [],
-      classes: classes || [],
-      targetUsers: targetUsers || [],
-      publishDate,
-      expiryDate,
-      expiryType,
-      attachmentsEnabled,
-      attachments: attachments || [],
-    };
+    const announcement = await Announcement.findById(id);
+    if (!announcement) {
+      return res.status(404).json({ message: "Announcement not found" });
+    }
 
-    const updatedAnnouncement = await Announcement.findByIdAndUpdate(
-      id,
-      { $set: updateData },
-      { new: true }
-    )
+    // Update the announcement's fields.
+    announcement.title = title;
+    announcement.content = content;
+    announcement.type = type;
+    announcement.roles = roles || [];
+    announcement.classes = classes || [];
+    announcement.targetUsers = targetUsers || [];
+    announcement.publishDate = publishDate;
+    announcement.expiryDate = expiryDate;
+    announcement.expiryType = expiryType;
+    announcement.attachmentsEnabled = attachmentsEnabled;
+    announcement.attachments = attachments || [];
+
+    // Save the announcement so that the pre-save hook recalculates 'visible'.
+    await announcement.save();
+
+    // Re-fetch the updated announcement with populations.
+    const populatedAnnouncement = await Announcement.findById(id)
       .populate("classes", "class_code commencement_year specialization")
       .populate("targetUsers", "name email")
       .populate("createdBy", "name email");
 
-    if (!updatedAnnouncement) {
-      return res.status(404).json({ message: "Announcement not found" });
-    }
-    res.status(200).json(updatedAnnouncement);
+    res.status(200).json(populatedAnnouncement);
   } catch (error) {
     console.error("Error updating announcement:", error);
     res.status(500).json({ message: "Error updating announcement", error: error.message });
