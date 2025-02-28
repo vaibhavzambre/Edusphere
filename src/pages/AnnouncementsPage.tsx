@@ -28,7 +28,7 @@ interface Announcement {
   type: "global" | "role" | "class" | "individual";
   roles?: string[];
   classes?: Class[];
-  targetUsers?: User[]; // Expect full user objects here
+  targetUsers?: (User | string)[]; // UPDATED: Allow strings if not populated.
   publishDate: string;
   expiryDate?: string;
   expiryType: "permanent" | "limited";
@@ -43,18 +43,15 @@ interface AnnouncementFormData {
   content: string;
   type: "global" | "role" | "class" | "individual";
   roles: string[];
-  classes: string[]; // Using only one field for class-specific announcements.
-  targetUsers: string[]; // IDs for form data
+  classes: string[];
+  targetUsers: string[];
   publishDate: string;
   expiryType: "permanent" | "limited";
   expiryDate: string;
   attachmentsEnabled: boolean;
-  attachments: File[]; // Newly uploaded files
+  attachments: File[];
 }
 
-/**
- * Converts a stored UTC ISO date string into a string formatted for a datetime-local input.
- */
 const formatDateToLocalInput = (dateStr: string): string => {
   const d = new Date(dateStr);
   const year = d.getFullYear();
@@ -65,9 +62,6 @@ const formatDateToLocalInput = (dateStr: string): string => {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 };
 
-/**
- * Returns the current local datetime in "YYYY-MM-DDTHH:mm" format.
- */
 const getCurrentDateTimeLocal = (): string => {
   const now = new Date();
   const year = now.getFullYear();
@@ -80,7 +74,6 @@ const getCurrentDateTimeLocal = (): string => {
 
 const AnnouncementsPage: React.FC = () => {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
   const [showForm, setShowForm] = useState(false);
   const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null);
   const [successMessage, setSuccessMessage] = useState("");
@@ -99,7 +92,6 @@ const AnnouncementsPage: React.FC = () => {
     attachments: [],
   });
   const [existingAttachments, setExistingAttachments] = useState<Attachment[]>([]);
-
   const [classesList, setClassesList] = useState<Class[]>([]);
   const [students, setStudents] = useState<User[]>([]);
   const [teachers, setTeachers] = useState<User[]>([]);
@@ -107,25 +99,17 @@ const AnnouncementsPage: React.FC = () => {
   const [showTeacherModal, setShowTeacherModal] = useState(false);
   const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
   const [selectedTeachers, setSelectedTeachers] = useState<string[]>([]);
-
   const [showClassesDropdown, setShowClassesDropdown] = useState(false);
-
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [announcementToDelete, setAnnouncementToDelete] = useState<Announcement | null>(null);
-
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [detailedAnnouncement, setDetailedAnnouncement] = useState<Announcement | null>(null);
-  const [recipientSearch, setRecipientSearch] = useState("");
-
-  // Filter states for student/teacher modals (unchanged)
   const [studentNameSearch, setStudentNameSearch] = useState("");
   const [studentEmailSearch, setStudentEmailSearch] = useState("");
   const [studentSapIdSearch, setStudentSapIdSearch] = useState("");
   const [teacherNameSearch, setTeacherNameSearch] = useState("");
   const [teacherEmailSearch, setTeacherEmailSearch] = useState("");
   const [showFilters, setShowFilters] = useState(false);
-
-  // New: Filter state for announcements
   const [announcementFilter, setAnnouncementFilter] = useState({
     title: "",
     content: "",
@@ -135,12 +119,13 @@ const AnnouncementsPage: React.FC = () => {
     createdBy: "",
     status: "all"
   });
-
-  // New: Toggle for announcement filter card
   const [showAnnouncementFilters, setShowAnnouncementFilters] = useState(false);
-
   const [detailedStudentSearch, setDetailedStudentSearch] = useState("");
   const [detailedTeacherSearch, setDetailedTeacherSearch] = useState("");
+
+  // NEW: Error modal state
+  const [errorModalMessage, setErrorModalMessage] = useState("");
+  const [showErrorModal, setShowErrorModal] = useState(false);
 
   useEffect(() => {
     fetchAnnouncements();
@@ -162,17 +147,16 @@ const AnnouncementsPage: React.FC = () => {
       editingAnnouncement.targetUsers
     ) {
       const studentIds = editingAnnouncement.targetUsers
-        .filter((user) => students.some((s) => s._id === user._id))
-        .map((user) => user._id);
+        .filter((user) => typeof user !== "string" && students.some((s) => s._id === user._id))
+        .map((user) => (typeof user !== "string" ? user._id : ""));
       const teacherIds = editingAnnouncement.targetUsers
-        .filter((user) => teachers.some((t) => t._id === user._id))
-        .map((user) => user._id);
+        .filter((user) => typeof user !== "string" && teachers.some((t) => t._id === user._id))
+        .map((user) => (typeof user !== "string" ? user._id : ""));
       setSelectedStudents(studentIds);
       setSelectedTeachers(teacherIds);
     }
   }, [editingAnnouncement, students, teachers]);
 
-  // Ensure detailed modal has up-to-date users
   useEffect(() => {
     if (detailedAnnouncement && detailedAnnouncement.type === "individual") {
       if (students.length === 0 || teachers.length === 0) {
@@ -194,10 +178,8 @@ const AnnouncementsPage: React.FC = () => {
       const data = await response.json();
       setAnnouncements(data);
       console.log("Fetched Announcements:", data);
-      setLoading(false);
     } catch (error) {
-      console.error("Error fetching announcements:", error);
-      setLoading(false);
+      console.error("Error fetching announcements:", error instanceof Error ? error.message : String(error));
     }
   };
 
@@ -214,16 +196,15 @@ const AnnouncementsPage: React.FC = () => {
       const data = await response.json();
       setClassesList(data);
     } catch (error) {
-      console.error("Error fetching classes:", error);
+      console.error("Error fetching classes:", error instanceof Error ? error.message : String(error));
     }
   };
 
   const fetchUsers = async () => {
     try {
-      const token = localStorage.getItem("token");
       const studentResponse = await fetch("http://localhost:5001/api/users/students", {
         method: "GET",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
       });
       if (!studentResponse.ok) throw new Error("Failed to fetch students");
       const studentData = await studentResponse.json();
@@ -231,13 +212,13 @@ const AnnouncementsPage: React.FC = () => {
 
       const teacherResponse = await fetch("http://localhost:5001/api/users/teachers", {
         method: "GET",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
       });
       if (!teacherResponse.ok) throw new Error("Failed to fetch teachers");
       const teacherData = await teacherResponse.json();
       setTeachers(teacherData);
     } catch (error) {
-      console.error("Error fetching users:", error);
+      console.error("Error fetching users:", error instanceof Error ? error.message : String(error));
     }
   };
 
@@ -272,13 +253,13 @@ const AnnouncementsPage: React.FC = () => {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
         },
       });
-      if (!response.ok) throw new Error("Failed to fetch announcements");
+      if (!response.ok) throw new Error("Failed to delete announcement");
       setAnnouncements((prev) => prev.filter((a) => a._id !== announcementToDelete._id));
       setShowDeleteModal(false);
       setAnnouncementToDelete(null);
       setDeleteSuccessMessage("Announcement deleted successfully!");
     } catch (error) {
-      console.error("Error deleting announcement:", error);
+      console.error("Error deleting announcement:", error instanceof Error ? error.message : String(error));
     }
   };
 
@@ -290,7 +271,7 @@ const AnnouncementsPage: React.FC = () => {
       type: announcement.type,
       roles: announcement.roles || [],
       classes: announcement.classes ? announcement.classes.map((cls) => cls._id) : [],
-      targetUsers: announcement.targetUsers ? announcement.targetUsers.map((u) => u._id) : [],
+      targetUsers: announcement.targetUsers ? announcement.targetUsers.map((u) => (typeof u === "string" ? u : u._id)) : [],
       publishDate: formatDateToLocalInput(announcement.publishDate),
       expiryType: announcement.expiryType,
       expiryDate:
@@ -323,6 +304,15 @@ const AnnouncementsPage: React.FC = () => {
       alert("Please set expiry date/time for limited announcements.");
       return;
     }
+    // Client-side check – publish date must be before expiry date.
+    if (
+      announcementFormData.expiryType === "limited" &&
+      new Date(announcementFormData.publishDate) >= new Date(announcementFormData.expiryDate)
+    ) {
+      setErrorModalMessage("Expiry date must be after publish date.");
+      setShowErrorModal(true);
+      return;
+    }
     if (announcementFormData.type === "role" && announcementFormData.roles.length === 0) {
       alert("Please select at least one role.");
       return;
@@ -350,7 +340,6 @@ const AnnouncementsPage: React.FC = () => {
 
     let uploadedFiles: { filePath: string; filename: string; contentType: string }[] = [];
     if (announcementFormData.attachmentsEnabled && announcementFormData.attachments.length > 0) {
-      const token = localStorage.getItem("token");
       for (const file of announcementFormData.attachments) {
         const formData = new FormData();
         formData.append("file", file);
@@ -449,7 +438,10 @@ const AnnouncementsPage: React.FC = () => {
       setEditingAnnouncement(null);
       setShowForm(false);
     } catch (error) {
-      console.error("Error submitting form:", error);
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.error("Error submitting form:", errMsg);
+      setErrorModalMessage(errMsg);
+      setShowErrorModal(true);
     }
   };
 
@@ -462,7 +454,6 @@ const AnnouncementsPage: React.FC = () => {
 
   const now = Date.now();
 
-  // NEW: Filtering logic using the announcementFilter state.
   const filteredAnnouncements = announcements.filter((announcement) => {
     const matchesTitle = announcement.title.toLowerCase().includes(announcementFilter.title.toLowerCase());
     const matchesContent = announcement.content.toLowerCase().includes(announcementFilter.content.toLowerCase());
@@ -512,17 +503,28 @@ const AnnouncementsPage: React.FC = () => {
         </div>
       )}
       {deleteSuccessMessage && (
-          <div className="mb-4 p-4 bg-red-100 border-l-4 border-red-500 text-red-700 rounded flex justify-between items-center">
-            <span>{deleteSuccessMessage}</span>
-            <button
-              onClick={() => setDeleteSuccessMessage("")}
-              className="text-red-700 hover:text-red-900"
-            >
-              &times;
-            </button>
-          </div>
-        )}
+        <div className="mb-4 p-4 bg-red-100 border-l-4 border-red-500 text-red-700 rounded flex justify-between items-center">
+          <span>{deleteSuccessMessage}</span>
+          <button onClick={() => setDeleteSuccessMessage("")} className="text-red-700 hover:text-red-900">
+            &times;
+          </button>
+        </div>
+      )}
 
+      {/* NEW: Error Modal */}
+      {showErrorModal && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-40">
+          <div className="bg-white p-6 rounded-lg shadow-md w-96">
+            <h3 className="text-lg font-semibold mb-2">Error</h3>
+            <p className="mb-4">{errorModalMessage}</p>
+            <div className="flex justify-end">
+              <button onClick={() => setShowErrorModal(false)} className="btn-primary">
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex justify-end items-center mb-6">
         <button
@@ -537,7 +539,6 @@ const AnnouncementsPage: React.FC = () => {
         </button>
       </div>
 
-      {/* Toggle Filter Section Button */}
       <div className="mb-4">
         <button
           onClick={() => setShowAnnouncementFilters(!showAnnouncementFilters)}
@@ -547,7 +548,6 @@ const AnnouncementsPage: React.FC = () => {
         </button>
       </div>
 
-      {/* Filter Announcements Card */}
       {showAnnouncementFilters && (
         <div className="mb-6 p-4 bg-gray-100 rounded-md shadow-sm">
           <h3 className="text-lg font-bold text-gray-700 mb-2">Filter Announcements</h3>
@@ -651,7 +651,6 @@ const AnnouncementsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Upcoming Announcements */}
       <div className="mb-8">
         <h2 className="text-2xl font-semibold text-gray-800 mb-4">Upcoming Announcements</h2>
         {upcomingAnnouncements.length === 0 ? (
@@ -661,12 +660,9 @@ const AnnouncementsPage: React.FC = () => {
             {upcomingAnnouncements.map((announcement) => (
               <div
                 key={announcement._id}
-                className="w-full sm:h-auto md:h-80 p-5 rounded-xl shadow-md bg-white border border-gray-300 
-             transition-transform transform hover:-translate-y-1 hover:shadow-lg hover:border-indigo-500 
-             duration-300"
+                className="w-full sm:h-auto md:h-80 p-5 rounded-xl shadow-md bg-white border border-gray-300 transition-transform transform hover:-translate-y-1 hover:shadow-lg hover:border-indigo-500 duration-300"
               >
                 <div className="flex flex-col h-full">
-                  {/* Header with responsive centered title */}
                   <div className="relative">
                     <div className="text-center pr-12">
                       <h3 className="text-base sm:text-lg md:text-2xl font-bold text-gray-800 overflow-hidden whitespace-nowrap text-ellipsis">
@@ -687,7 +683,6 @@ const AnnouncementsPage: React.FC = () => {
                       />
                     </div>
                   </div>
-                  {/* Scrollable Content */}
                   <div className="mt-4 flex-1 overflow-auto">
                     <p className="text-gray-700 text-base leading-relaxed">{announcement.content}</p>
                     <div className="mt-4 flex flex-row justify-around items-center">
@@ -742,7 +737,6 @@ const AnnouncementsPage: React.FC = () => {
                       </div>
                     )}
                   </div>
-                  {/* Footer Button aligned to left */}
                   <button
                     onClick={() => {
                       setDetailedAnnouncement(announcement);
@@ -759,7 +753,6 @@ const AnnouncementsPage: React.FC = () => {
         )}
       </div>
 
-      {/* Active Announcements */}
       <div className="mb-8">
         <h2 className="text-2xl font-semibold text-gray-800 mb-4">Active Announcements</h2>
         {activeAnnouncements.length === 0 ? (
@@ -769,12 +762,9 @@ const AnnouncementsPage: React.FC = () => {
             {activeAnnouncements.map((announcement) => (
               <div
                 key={announcement._id}
-                className="w-full sm:h-auto md:h-80 p-5 rounded-xl shadow-md bg-white border border-gray-300 
-             transition-transform transform hover:-translate-y-1 hover:shadow-lg hover:border-indigo-500 
-             duration-300"
+                className="w-full sm:h-auto md:h-80 p-5 rounded-xl shadow-md bg-white border border-gray-300 transition-transform transform hover:-translate-y-1 hover:shadow-lg hover:border-indigo-500 duration-300"
               >
                 <div className="flex flex-col h-full">
-                  {/* Header with responsive centered title */}
                   <div className="relative">
                     <div className="text-center pr-12">
                       <h3 className="text-base sm:text-lg md:text-2xl font-bold text-gray-800 overflow-hidden whitespace-nowrap text-ellipsis">
@@ -795,7 +785,6 @@ const AnnouncementsPage: React.FC = () => {
                       />
                     </div>
                   </div>
-                  {/* Scrollable Content */}
                   <div className="mt-4 flex-1 overflow-auto">
                     <p className="text-gray-700 text-base leading-relaxed">{announcement.content}</p>
                     <div className="mt-4 flex flex-row justify-around items-center">
@@ -850,7 +839,6 @@ const AnnouncementsPage: React.FC = () => {
                       </div>
                     )}
                   </div>
-                  {/* Footer Button aligned to left */}
                   <button
                     onClick={() => {
                       setDetailedAnnouncement(announcement);
@@ -867,7 +855,6 @@ const AnnouncementsPage: React.FC = () => {
         )}
       </div>
 
-      {/* Expired Announcements */}
       <div className="mb-8">
         <h2 className="text-2xl font-semibold text-gray-800 mb-4">Expired Announcements</h2>
         {expiredAnnouncements.length === 0 ? (
@@ -877,8 +864,8 @@ const AnnouncementsPage: React.FC = () => {
             {expiredAnnouncements.map((announcement) => (
               <div
                 key={announcement._id}
-                className="w-full sm:h-auto md:h-72 p-5 rounded-xl shadow-md bg-gray-100 border border-gray-300 transition-transform transform hover:-translate-y-1 hover:shadow-lg hover:border-indigo-500 duration-300">
-                {/* Header with responsive centered title */}
+                className="w-full sm:h-auto md:h-72 p-5 rounded-xl shadow-md bg-gray-100 border border-gray-300 transition-transform transform hover:-translate-y-1 hover:shadow-lg hover:border-indigo-500 duration-300"
+              >
                 <div className="relative">
                   <div className="text-center pr-12">
                     <h3 className="text-base sm:text-lg md:text-2xl font-bold text-gray-800 overflow-hidden whitespace-nowrap text-ellipsis">
@@ -968,13 +955,9 @@ const AnnouncementsPage: React.FC = () => {
         )}
       </div>
 
-      {/* Detailed Recipients Modal */}
       {showDetailModal && detailedAnnouncement && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
-          <div
-            className="bg-white p-6 rounded-lg shadow-lg w-full max-w-lg overflow-y-auto"
-            style={{ maxHeight: "80vh" }}
-          >
+          <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-lg overflow-y-auto" style={{ maxHeight: "80vh" }}>
             <h2 className="text-xl font-bold mb-4">Detailed Recipients</h2>
             <p className="mb-4 text-sm text-gray-700">
               <strong>Announcement Type:</strong>{" "}
@@ -1015,13 +998,14 @@ const AnnouncementsPage: React.FC = () => {
                     if (typeof detailedAnnouncement.targetUsers[0] === "object" && "name" in detailedAnnouncement.targetUsers[0]) {
                       studentRecipients = detailedAnnouncement.targetUsers.filter(
                         (user) =>
+                          typeof user !== "string" &&
                           students.some((s) => s._id === user._id) &&
                           (user.name.toLowerCase().includes(detailedStudentSearch.toLowerCase()) ||
                             user.email.toLowerCase().includes(detailedStudentSearch.toLowerCase()) ||
                             (students.find((s) => s._id === user._id)?.profile?.sap_id
                               ?.toString()
                               .includes(detailedStudentSearch)))
-                      );
+                      ) as User[];
                     } else {
                       studentRecipients = students.filter((s) => detailedAnnouncement.targetUsers!.includes(s._id));
                       studentRecipients = studentRecipients.filter(
@@ -1059,10 +1043,11 @@ const AnnouncementsPage: React.FC = () => {
                     if (typeof detailedAnnouncement.targetUsers[0] === "object" && "name" in detailedAnnouncement.targetUsers[0]) {
                       teacherRecipients = detailedAnnouncement.targetUsers.filter(
                         (user) =>
+                          typeof user !== "string" &&
                           teachers.some((t) => t._id === user._id) &&
                           (user.name.toLowerCase().includes(detailedTeacherSearch.toLowerCase()) ||
                             user.email.toLowerCase().includes(detailedTeacherSearch.toLowerCase()))
-                      );
+                      ) as User[];
                     } else {
                       teacherRecipients = teachers.filter((t) => detailedAnnouncement.targetUsers!.includes(t._id));
                       teacherRecipients = teacherRecipients.filter(
@@ -1112,7 +1097,6 @@ const AnnouncementsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Add/Edit Announcement Modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-start pt-10">
           <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -1120,7 +1104,6 @@ const AnnouncementsPage: React.FC = () => {
               {editingAnnouncement ? "Update Announcement" : "Create Announcement"}
             </h2>
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Title */}
               <div>
                 <label className="block text-sm font-medium text-gray-700">
                   Title:<span className="text-red-500">*</span>
@@ -1133,7 +1116,6 @@ const AnnouncementsPage: React.FC = () => {
                   required
                 />
               </div>
-              {/* Content */}
               <div>
                 <label className="block text-sm font-medium text-gray-700">
                   Content:<span className="text-red-500">*</span>
@@ -1145,7 +1127,6 @@ const AnnouncementsPage: React.FC = () => {
                   required
                 />
               </div>
-              {/* Type */}
               <div>
                 <label className="block text-sm font-medium text-gray-700">
                   Type of Announcement:<span className="text-red-500">*</span>
@@ -1171,7 +1152,6 @@ const AnnouncementsPage: React.FC = () => {
                   <option value="individual">Individual-Specific</option>
                 </select>
               </div>
-              {/* Role-specific selection */}
               {announcementFormData.type === "role" && (
                 <div>
                   <p className="text-sm font-medium text-gray-700">
@@ -1197,7 +1177,6 @@ const AnnouncementsPage: React.FC = () => {
                   ))}
                 </div>
               )}
-              {/* Class-specific selection */}
               {announcementFormData.type === "class" && (
                 <div>
                   <p className="text-sm font-medium text-gray-700">
@@ -1259,7 +1238,6 @@ const AnnouncementsPage: React.FC = () => {
                   </div>
                 </div>
               )}
-              {/* Individual-specific selection */}
               {announcementFormData.type === "individual" && (
                 <div>
                   <p className="text-sm font-medium text-gray-700">
@@ -1275,7 +1253,6 @@ const AnnouncementsPage: React.FC = () => {
                   </div>
                 </div>
               )}
-              {/* Publish Date/Time */}
               <div>
                 <label className="block text-sm font-medium text-gray-700">
                   Publish Date/Time:<span className="text-red-500">*</span>
@@ -1289,7 +1266,6 @@ const AnnouncementsPage: React.FC = () => {
                   required
                 />
               </div>
-              {/* Duration Dropdown */}
               <div>
                 <label className="block text-sm font-medium text-gray-700">
                   Duration Type:<span className="text-red-500">*</span>
@@ -1304,7 +1280,6 @@ const AnnouncementsPage: React.FC = () => {
                   <option value="limited">Time-Limited</option>
                 </select>
               </div>
-              {/* Expiry Date */}
               {announcementFormData.expiryType === "limited" && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
@@ -1319,7 +1294,6 @@ const AnnouncementsPage: React.FC = () => {
                   />
                 </div>
               )}
-              {/* Attachments */}
               <div>
                 <label className="block text-sm font-medium text-gray-700">
                   Do you have attachments?<span className="text-red-500">*</span>
@@ -1383,7 +1357,6 @@ const AnnouncementsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Student Selection Modal */}
       {showStudentModal && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
           <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-lg relative">
@@ -1444,7 +1417,6 @@ const AnnouncementsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Teacher Selection Modal */}
       {showTeacherModal && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
           <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-lg relative">
@@ -1502,7 +1474,6 @@ const AnnouncementsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
       {showDeleteModal && announcementToDelete && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
           <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
@@ -1522,13 +1493,9 @@ const AnnouncementsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Detailed Recipients Modal */}
       {showDetailModal && detailedAnnouncement && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
-          <div
-            className="bg-white p-6 rounded-lg shadow-lg w-full max-w-lg overflow-y-auto"
-            style={{ maxHeight: "80vh" }}
-          >
+          <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-lg overflow-y-auto" style={{ maxHeight: "80vh" }}>
             <h2 className="text-xl font-bold mb-4">Detailed Recipients</h2>
             <p className="mb-4 text-sm text-gray-700">
               <strong>Announcement Type:</strong>{" "}
@@ -1569,13 +1536,14 @@ const AnnouncementsPage: React.FC = () => {
                     if (typeof detailedAnnouncement.targetUsers[0] === "object" && "name" in detailedAnnouncement.targetUsers[0]) {
                       studentRecipients = detailedAnnouncement.targetUsers.filter(
                         (user) =>
+                          typeof user !== "string" &&
                           students.some((s) => s._id === user._id) &&
                           (user.name.toLowerCase().includes(detailedStudentSearch.toLowerCase()) ||
                             user.email.toLowerCase().includes(detailedStudentSearch.toLowerCase()) ||
                             (students.find((s) => s._id === user._id)?.profile?.sap_id
                               ?.toString()
                               .includes(detailedStudentSearch)))
-                      );
+                      ) as User[];
                     } else {
                       studentRecipients = students.filter((s) => detailedAnnouncement.targetUsers!.includes(s._id));
                       studentRecipients = studentRecipients.filter(
@@ -1613,10 +1581,11 @@ const AnnouncementsPage: React.FC = () => {
                     if (typeof detailedAnnouncement.targetUsers[0] === "object" && "name" in detailedAnnouncement.targetUsers[0]) {
                       teacherRecipients = detailedAnnouncement.targetUsers.filter(
                         (user) =>
+                          typeof user !== "string" &&
                           teachers.some((t) => t._id === user._id) &&
                           (user.name.toLowerCase().includes(detailedTeacherSearch.toLowerCase()) ||
                             user.email.toLowerCase().includes(detailedTeacherSearch.toLowerCase()))
-                      );
+                      ) as User[];
                     } else {
                       teacherRecipients = teachers.filter((t) => detailedAnnouncement.targetUsers!.includes(t._id));
                       teacherRecipients = teacherRecipients.filter(
@@ -1665,6 +1634,7 @@ const AnnouncementsPage: React.FC = () => {
           </div>
         </div>
       )}
+
     </div>
   );
 };

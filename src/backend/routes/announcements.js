@@ -49,7 +49,7 @@ router.post("/", authMiddleware, checkAdmin, async (req, res) => {
 
     const announcement = new Announcement(announcementData);
     const saved = await announcement.save();
-    // UPDATED: Re-fetch the announcement with population so that classes are fully populated.
+    // Re-fetch the announcement with population so that classes are fully populated.
     const populatedAnnouncement = await Announcement.findById(saved._id)
       .populate("classes", "class_code commencement_year specialization")
       .populate("targetUsers", "name email")
@@ -73,9 +73,6 @@ router.get("/", authMiddleware, async (req, res) => {
     if (role === "admin") {
       // Admin sees all announcements.
     } else if (role === "student") {
-      // For students, only show announcements if:
-      //   - They are global, role-based, or individual announcements; or
-      //   - They are class-specific and the student's class is included in the announcement.
       const orConditions = [
         { type: "global" },
         { type: "role", roles: role },
@@ -87,13 +84,11 @@ router.get("/", authMiddleware, async (req, res) => {
       if (userDoc && userDoc.profile) {
         const studentDoc = await Student.findById(userDoc.profile);
         if (studentDoc && studentDoc.class) {
-          // Only include class-specific announcements for the student's class.
           orConditions.push({ type: "class", classes: { $in: [studentDoc.class] } });
         }
       }
       query.$or = orConditions;
     } else if (role === "teacher") {
-      // For teachers, adjust the logic as needed. Here we assume teachers see only global, role-based, and individual announcements.
       query.$or = [
         { type: "global" },
         { type: "role", roles: role },
@@ -122,8 +117,8 @@ router.get("/", authMiddleware, async (req, res) => {
 /**
  * ✅ UPDATE an Announcement (Admin Only)
  * UPDATED: Instead of using findByIdAndUpdate, we load the announcement,
- * update its fields, and then call save() to trigger the pre-save hook,
- * which recalculates the 'visible' field based on the new dates.
+ * update its fields (converting publish and expiry dates to Date objects),
+ * and then call save() to trigger the pre-save hook which recalculates 'visible'.
  */
 router.put("/:id", authMiddleware, checkAdmin, async (req, res) => {
   try {
@@ -158,13 +153,14 @@ router.put("/:id", authMiddleware, checkAdmin, async (req, res) => {
     announcement.roles = roles || [];
     announcement.classes = classes || [];
     announcement.targetUsers = targetUsers || [];
-    announcement.publishDate = publishDate;
-    announcement.expiryDate = expiryDate;
+    // Explicitly convert to Date objects to trigger validation.
+    announcement.publishDate = new Date(publishDate);
+    announcement.expiryDate = new Date(expiryDate);
     announcement.expiryType = expiryType;
     announcement.attachmentsEnabled = attachmentsEnabled;
     announcement.attachments = attachments || [];
 
-    // Save the announcement so that the pre-save hook recalculates 'visible'.
+    // Save so that the pre-save hook recalculates 'visible'.
     await announcement.save();
 
     // Re-fetch the updated announcement with populations.
