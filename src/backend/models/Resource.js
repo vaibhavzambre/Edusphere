@@ -1,26 +1,28 @@
+// resource.js
 import mongoose from "mongoose";
+
+const FileSchema = new mongoose.Schema(
+  {
+    filename: { type: String, required: true },
+    file_id: { type: mongoose.Schema.Types.ObjectId, required: true },
+    contentType: { type: String, required: true },
+  },
+  { _id: false }
+);
 
 const ResourceSchema = new mongoose.Schema(
   {
-    filename: { type: String, required: true },
-    file_id: { type: mongoose.Schema.Types.ObjectId, required: true }, // GridFS File ID
-    contentType: { type: String, required: true },
-    description: { type: String },
+    files: { type: [FileSchema], required: true },
+    description: { type: String, required: true },
     uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-    
-    // Link to subject and class
     subject: { type: mongoose.Schema.Types.ObjectId, ref: "Subject", required: true },
-    classes: [{ type: mongoose.Schema.Types.ObjectId, ref: "Class", required: true }],
-
-    // Visibility settings
-    visibility: { type: String, enum: ["public", "restricted"], default: "restricted" },
-    allowedStudents: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }], // Specific students
-    
+    // Changed from an array (classes) to a single class field.
+    class: { type: mongoose.Schema.Types.ObjectId, ref: "Class", required: true },
+    // Visibility: "public" means visible to all students for the selected subject/class,
+    // "private" means visible only on the teacher side.
+    visibility: { type: String, enum: ["public", "private"], required: true, default: "private" },
   },
   { timestamps: true }
 );
-
-// Ensure a resource can't be uploaded twice with the same file name for the same subject & class
-ResourceSchema.index({ filename: 1, subject: 1, class: 1 }, { unique: true });
 
 export default mongoose.model("Resource", ResourceSchema);

@@ -1,0 +1,11 @@
+
+
+Make seperate column for Description
+
+Filters are not working.
+
+
+In the filters option, remove the existing subjects filter and make 2 new filters one for subject but it should contain only unique subject names and other for selecting class which also contains unique names. make them such that they dynamically adjust according to the one that is selected first. If the class dropdown is selected first, then accordingly update the dropdown of the subjects and vice versa. Also add an input box in each of these dropdowns to let the person search in the dropdown as well.  
+
+
+UI Changes (make it like a card when size is too small) and make it responsive for small phones too

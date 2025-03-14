@@ -1,100 +1,114 @@
+// resourceroutes.js
 import express from "express";
 import mongoose from "mongoose";
 import { GridFSBucket } from "mongodb";
 import Resource from "../models/Resource.js";
-import { authMiddleware } from "../middleware/authMiddleware.js"; // Ensure only teachers can upload
-import Class from "../models/Class.js";
+import { authMiddleware } from "../middleware/authMiddleware.js";
 const router = express.Router();
 
-// **🔹 Upload Resource**
+// --- FETCH TEACHER'S CLASSES ---
+router.get("/classes/teacher", authMiddleware, async (req, res) => {
+  try {
+    const teacherId = req.user.id;
+    // Assuming your Class model has a teacher field.
+    const classes = await mongoose.model("Class").find({ teacher: teacherId });
+    res.json(classes);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to fetch classes", error: error.message });
+  }
+});
+
+// --- UPLOAD RESOURCE ---
 router.post("/upload", authMiddleware, async (req, res) => {
   try {
-    // ✅ Check if file exists
     if (!req.files || !req.files.file) {
       return res.status(400).json({ message: "No file uploaded" });
     }
 
-    // ✅ Extract form data
-    const { subject, classes, description, visibility, allowedStudents } = req.body;
-    const teacherId = req.user.id; // Authenticated teacher
+    const { subject, class: classId, description, visibility, allowedStudents } = req.body;
+    const teacherId = req.user.id;
 
-    // ✅ Convert `classes` to an array
-    const classArray = Array.isArray(classes) ? classes : JSON.parse(classes || "[]");
-    if (classArray.length === 0) {
-      return res.status(400).json({ message: "At least one class must be selected." });
+    if (!classId) {
+      return res.status(400).json({ message: "Please select a class." });
     }
 
-    // ✅ Ensure teacher is authorized to upload for this subject
+    // Check that the subject exists and is assigned to the teacher.
     const subjectExists = await mongoose.model("Subject").findOne({
       _id: subject,
       teacher: teacherId,
     });
-
     if (!subjectExists) {
       return res.status(403).json({ message: "You are not assigned to this subject." });
     }
 
-    // ✅ Convert `allowedStudents` to an array (if visibility is restricted)
-    const studentArray = visibility === "restricted" ? JSON.parse(allowedStudents || "[]") : [];
+    let files = req.files.file;
+    files = Array.isArray(files) ? files : [files];
 
-    // ✅ Set up GridFS for file upload
-    const file = req.files.file;
+    // Check for duplicate files.
+    const seen = new Set();
+    for (const file of files) {
+      const key = `${file.name}-${file.mimetype}`;
+      if (seen.has(key)) {
+        return res.status(400).json({ message: `Duplicate file detected: ${file.name}` });
+      }
+      seen.add(key);
+    }
+
     const bucket = new GridFSBucket(mongoose.connection.db, { bucketName: "uploads" });
-    const uploadStream = bucket.openUploadStream(file.name, { contentType: file.mimetype });
-
-    // ✅ Handle upload events
-    uploadStream.on("error", (err) =>
-      res.status(500).json({ message: "Upload failed", error: err.message })
-    );
-
-    uploadStream.on("finish", async () => {
-      // ✅ Store metadata in the Resource Model
-      const newResource = new Resource({
-        filename: file.name,
-        file_id: uploadStream.id,
-        contentType: file.mimetype,
-        description,
-        uploadedBy: teacherId,
-        subject,
-        classes: classArray, // ✅ Store multiple classes
-        visibility: visibility || "restricted",
-        allowedStudents: studentArray,
+    const uploadPromises = files.map(file => {
+      return new Promise((resolve, reject) => {
+        const uploadStream = bucket.openUploadStream(file.name, { contentType: file.mimetype });
+        uploadStream.on("error", (err) => reject(err));
+        uploadStream.on("finish", () => {
+          resolve({
+            filename: file.name,
+            file_id: uploadStream.id,
+            contentType: file.mimetype,
+          });
+        });
+        uploadStream.end(file.data);
       });
+    });
+    const filesMetadata = await Promise.all(uploadPromises);
 
-      await newResource.save();
-      res.status(201).json({ message: "Resource uploaded successfully", resource: newResource });
+    const newResource = new Resource({
+      files: filesMetadata,
+      description,
+      uploadedBy: teacherId,
+      subject,
+      class: classId, // single class
+      visibility,
+      allowedStudents: allowedStudents
+        ? (typeof allowedStudents === "string" ? JSON.parse(allowedStudents) : allowedStudents)
+        : [],
     });
 
-    // ✅ Upload file to GridFS
-    uploadStream.write(file.data);
-    uploadStream.end();
+    await newResource.save();
+    res.status(201).json({ message: "Resource uploaded successfully", resource: newResource });
   } catch (error) {
     console.error("Error uploading resource:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 });
-// **🔹 Fetch Uploaded Resources (Teacher)**
-// **🔹 Fetch Uploaded Resources (Teacher)**
+
+// --- FETCH RESOURCES FOR TEACHER ---
 router.get("/teacher", authMiddleware, async (req, res) => {
   try {
     const teacherId = req.user.id;
-    // Populate subject and the updated "classes" field
+    // Note: update populate to use "class" (singular)
     const resources = await Resource.find({ uploadedBy: teacherId })
       .populate("subject")
-      .populate("classes"); // Changed from "class" to "classes"
+      .populate("class");
     res.json(resources);
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch resources", error: error.message });
   }
 });
 
-
-// **🔹 Fetch Resources for Students**
-// In resourceRoutes.js
+// --- FETCH RESOURCES FOR STUDENTS ---
 router.get("/student", authMiddleware, async (req, res) => {
   try {
     const studentId = req.user.id;
-    // Get the student user (which should have a profile with the class reference)
     const student = await mongoose.model("User")
       .findById(studentId)
       .populate("profile");
@@ -104,77 +118,121 @@ router.get("/student", authMiddleware, async (req, res) => {
     }
     
     const studentClass = student.profile.class;
-    
-    // Find resources and populate the "uploadedBy" field (selecting only the name)
     const resources = await Resource.find({
       $or: [
         { visibility: "public" },
-        { classes: studentClass },
+        { class: studentClass },
         { allowedStudents: studentId }
       ]
     })
       .populate("subject")
-      .populate("classes")
-      .populate("uploadedBy", "name"); // Populate uploadedBy with only the name field
-    
+      .populate("class")
+      .populate("uploadedBy", "name");
     res.json(resources);
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch resources", error: error.message });
   }
 });
 
-
-
-// **🔹 Download Resource**
+// --- DOWNLOAD RESOURCE ---
 router.get("/download/:id", async (req, res) => {
   try {
     const fileId = new mongoose.Types.ObjectId(req.params.id);
     const bucket = new GridFSBucket(mongoose.connection.db, { bucketName: "uploads" });
-    
     const files = await bucket.find({ _id: fileId }).toArray();
     if (!files.length) return res.status(404).json({ message: "File not found" });
-
-    res.set({ "Content-Type": files[0].contentType, "Content-Disposition": `attachment; filename="${files[0].filename}"` });
+    res.set({
+      "Content-Type": files[0].contentType,
+      "Content-Disposition": `attachment; filename="${files[0].filename}"`
+    });
     bucket.openDownloadStream(fileId).pipe(res);
   } catch (error) {
     res.status(500).json({ message: "Error downloading file", error: error.message });
   }
 });
-
-// **🔹 Edit Resource (Only Metadata)**
-// **🔹 Update Resource (Only Metadata)**
+// --- UPDATE RESOURCE ---
 router.put("/edit/:id", authMiddleware, async (req, res) => {
   try {
-    const { description, visibility, allowedStudents } = req.body;
+    console.log("Update req.body:", req.body);
+    if (req.files) {
+      console.log("Update req.files:", req.files);
+    }
+    
+    const { description, visibility, subject, class: classId, removeFiles } = req.body;
     const resource = await Resource.findById(req.params.id);
 
-    // Verify the resource exists and the logged-in teacher owns it
     if (!resource || resource.uploadedBy.toString() !== req.user.id) {
       return res.status(403).json({ message: "Unauthorized to edit this resource" });
     }
 
-    // Update description and visibility if provided
-    resource.description = description || resource.description;
-    resource.visibility = visibility || resource.visibility;
+    // Validate required fields.
+    if (!subject || !classId) {
+      return res.status(400).json({ message: "Subject and class are required" });
+    }
 
-    // Process allowedStudents field:
-    // If visibility is "restricted", ensure allowedStudents is an array.
-    // It might come as a JSON string, so try to parse it.
-    if (resource.visibility === "restricted") {
-      let allowedArray = [];
-      if (typeof allowedStudents === "string") {
-        try {
-          allowedArray = JSON.parse(allowedStudents);
-        } catch (parseErr) {
-          return res.status(400).json({ message: "Invalid format for allowedStudents" });
-        }
-      } else if (Array.isArray(allowedStudents)) {
-        allowedArray = allowedStudents;
+    // Update required fields.
+    resource.description = description;
+    resource.visibility = visibility;
+    resource.subject = subject;
+    resource.class = classId; // single class
+
+    // Process removals if provided.
+    if (removeFiles) {
+      let removeArray = [];
+      try {
+        removeArray = JSON.parse(removeFiles);
+      } catch (err) {
+        return res.status(400).json({ message: "Invalid removeFiles format" });
       }
-      resource.allowedStudents = allowedArray;
-    } else {
-      // If not restricted, clear allowedStudents.
-      resource.allowedStudents = [];
+      const bucket = new GridFSBucket(mongoose.connection.db, { bucketName: "uploads" });
+      for (const fileId of removeArray) {
+        const fileIndex = resource.files.findIndex(file => file.file_id.toString() === fileId);
+        if (fileIndex > -1) {
+          try {
+            await bucket.delete(new mongoose.Types.ObjectId(fileId));
+          } catch (err) {
+            console.warn(`File not found for id ${fileId}, skipping deletion.`);
+          }
+          resource.files.splice(fileIndex, 1);
+        }
+      }
+    }
+
+    // Process new files if attached.
+    if (req.files && req.files.file) {
+      let newFiles = req.files.file;
+      newFiles = Array.isArray(newFiles) ? newFiles : [newFiles];
+
+      const existingKeys = new Set(resource.files.map(f => `${f.filename}-${f.contentType}`));
+      const newFileKeys = new Set();
+      for (const file of newFiles) {
+        const key = `${file.name}-${file.mimetype}`;
+        if (existingKeys.has(key)) {
+          return res.status(400).json({ message: `Duplicate file detected: ${file.name} already exists` });
+        }
+        if (newFileKeys.has(key)) {
+          return res.status(400).json({ message: `Duplicate file in upload: ${file.name}` });
+        }
+        newFileKeys.add(key);
+      }
+
+      const bucket = new GridFSBucket(mongoose.connection.db, { bucketName: "uploads" });
+      const uploadPromises = newFiles.map(file => {
+        return new Promise((resolve, reject) => {
+          const uploadStream = bucket.openUploadStream(file.name, { contentType: file.mimetype });
+          uploadStream.on("error", (err) => reject(err));
+          uploadStream.on("finish", () => {
+            resolve({
+              filename: file.name,
+              file_id: uploadStream.id,
+              contentType: file.mimetype,
+            });
+          });
+          uploadStream.end(file.data);
+        });
+      });
+      const newFilesMetadata = await Promise.all(uploadPromises);
+      resource.files = resource.files.concat(newFilesMetadata);
     }
 
     await resource.save();
@@ -185,8 +243,7 @@ router.put("/edit/:id", authMiddleware, async (req, res) => {
   }
 });
 
-
-// **🔹 Delete Resource**
+// --- DELETE RESOURCE ---
 router.delete("/delete/:id", authMiddleware, async (req, res) => {
   try {
     const resource = await Resource.findById(req.params.id);
@@ -195,11 +252,13 @@ router.delete("/delete/:id", authMiddleware, async (req, res) => {
     }
 
     const bucket = new GridFSBucket(mongoose.connection.db, { bucketName: "uploads" });
-    await bucket.delete(resource.file_id);
+    // Delete all attached files.
+    for (const fileMeta of resource.files) {
+      await bucket.delete(fileMeta.file_id);
+    }
     await resource.deleteOne();
 
     res.json({ message: "Resource deleted successfully" });
-
   } catch (error) {
     res.status(500).json({ message: "Failed to delete resource", error: error.message });
   }
