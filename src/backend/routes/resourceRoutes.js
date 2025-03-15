@@ -106,6 +106,7 @@ router.get("/teacher", authMiddleware, async (req, res) => {
 });
 
 // --- FETCH RESOURCES FOR STUDENTS ---
+// Modified query: only return resources for the student's class that are public or explicitly allowed.
 router.get("/student", authMiddleware, async (req, res) => {
   try {
     const studentId = req.user.id;
@@ -119,10 +120,9 @@ router.get("/student", authMiddleware, async (req, res) => {
     
     const studentClass = student.profile.class;
     const resources = await Resource.find({
+      class: studentClass,
       $or: [
-        { visibility: "public" },
-        { class: studentClass },
-        { allowedStudents: studentId }
+        { visibility: "public" }
       ]
     })
       .populate("subject")
