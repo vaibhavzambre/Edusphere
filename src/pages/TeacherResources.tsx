@@ -166,17 +166,14 @@ const TeacherResources = () => {
     [key: string]: { subject: { _id: string; subject_code: string; subject_name: string }; classes: ClassInfo[] };
   }>({});
 
-  // Dropdown options.
+  // Dropdown options used in upload/update modals (unchanged).
   const [subjectOptions, setSubjectOptions] = useState<Option[]>([]);
   const [classOptions, setClassOptions] = useState<Option[]>([]);
-
-  // Selected values.
-  const [selectedSubjectKey, setSelectedSubjectKey] = useState<string>("");
-  const [selectedClassId, setSelectedClassId] = useState<string>("");
 
   // Other UI states.
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [infoMessage, setInfoMessage] = useState("");
   const [showFilters, setShowFilters] = useState(false);
 
   // Modal and form states.
@@ -194,6 +191,7 @@ const TeacherResources = () => {
     filename: "",
     description: "",
     subject: "",
+    class: "",
     visibility: "",
   });
 
@@ -270,7 +268,10 @@ const TeacherResources = () => {
       const key = `${sub.subject_code} - ${sub.subject_name}`.toLowerCase();
       if (!sub.class) return;
       if (!mapping[key]) {
-        mapping[key] = { subject: { _id: sub._id, subject_code: sub.subject_code, subject_name: sub.subject_name }, classes: [sub.class] };
+        mapping[key] = {
+          subject: { _id: sub._id, subject_code: sub.subject_code, subject_name: sub.subject_name },
+          classes: [sub.class],
+        };
       } else {
         if (!mapping[key].classes.some((cls) => cls._id === sub.class._id)) {
           mapping[key].classes.push(sub.class);
@@ -297,33 +298,18 @@ const TeacherResources = () => {
     setClassOptions(clsOpts);
   };
 
-  // When a subject is selected.
+  // --- Functions for Upload/Update Modal (Unchanged for Upload) ---
+
+  // When a subject is selected in the Upload modal.
   const handleSubjectSelect = (subjectKey: string) => {
     if (subjectKey === "") {
-      setSelectedSubjectKey("");
       setUploadForm((prev) => ({ ...prev, subject: "" }));
-      const allSubjOpts: Option[] = Object.keys(subjectMapping).map((key) => ({
-        _id: key,
-        label: subjectMapping[key].subject.subject_code + " - " + subjectMapping[key].subject.subject_name,
-      }));
-      setSubjectOptions(allSubjOpts);
-      const clsMap = new Map<string, ClassInfo>();
-      allSubjects.forEach((sub) => {
-        if (sub.class && !clsMap.has(sub.class._id)) {
-          clsMap.set(sub.class._id, sub.class);
-        }
-      });
-      const clsOpts: Option[] = [];
-      clsMap.forEach((cls) => {
-        clsOpts.push({ _id: cls._id, label: classToString(cls) });
-      });
-      setClassOptions(clsOpts);
       return;
     }
-    setSelectedSubjectKey(subjectKey);
     const mappingEntry = subjectMapping[subjectKey];
     if (mappingEntry) {
       setUploadForm((prev) => ({ ...prev, subject: mappingEntry.subject._id }));
+      // Also update class options to those associated with the selected subject.
       const opts: Option[] = mappingEntry.classes.map((cls) => ({
         _id: cls._id,
         label: classToString(cls),
@@ -332,31 +318,35 @@ const TeacherResources = () => {
       if (uploadForm.class && !mappingEntry.classes.some((cls) => cls._id === uploadForm.class)) {
         setUploadForm((prev) => ({ ...prev, class: "" }));
       }
-    } else {
-      setClassOptions([]);
     }
   };
 
-  // When a class is selected.
-  const handleClassSelect = (classId: string) => {
-    if (classId === "") {
-      setSelectedClassId("");
-      setUploadForm((prev) => ({ ...prev, class: "" }));
-      const clsMap = new Map<string, ClassInfo>();
-      allSubjects.forEach((sub) => {
-        if (sub.class && !clsMap.has(sub.class._id)) {
-          clsMap.set(sub.class._id, sub.class);
-        }
-      });
-      const clsOpts: Option[] = [];
-      clsMap.forEach((cls) => {
-        clsOpts.push({ _id: cls._id, label: classToString(cls) });
-      });
-      setClassOptions(clsOpts);
+  // For update mode, use a dedicated function.
+  const handleSubjectSelectUpdate = (subjectKey: string) => {
+    if (subjectKey === "") {
+      setUpdateForm((prev) => ({ ...prev, subject: "" }));
       return;
     }
-    setSelectedClassId(classId);
+    const mappingEntry = subjectMapping[subjectKey];
+    if (mappingEntry) {
+      setUpdateForm((prev) => ({ ...prev, subject: mappingEntry.subject._id }));
+      // Update class options for update modal.
+      const opts: Option[] = mappingEntry.classes.map((cls) => ({
+        _id: cls._id,
+        label: classToString(cls),
+      }));
+      setClassOptions(opts);
+    }
+  };
+
+  // When a class is selected in either modal.
+  const handleClassSelect = (classId: string) => {
+    if (classId === "") {
+      setUploadForm((prev) => ({ ...prev, class: "" }));
+      return;
+    }
     setUploadForm((prev) => ({ ...prev, class: classId }));
+    // When a class is selected, update subject options for filters later.
     const filteredKeys = Object.keys(subjectMapping).filter((key) =>
       subjectMapping[key].classes.some((cls) => cls._id === classId)
     );
@@ -367,25 +357,7 @@ const TeacherResources = () => {
     setSubjectOptions(subjOpts);
   };
 
-  // For update mode: similar handlers.
-  const handleSubjectSelectUpdate = (subjectKey: string) => {
-    if (subjectKey === "") {
-      setUpdateForm((prev) => ({ ...prev, subject: "" }));
-      return;
-    }
-    setUpdateForm((prev) => ({ ...prev, subject: subjectMapping[subjectKey]?.subject._id || "" }));
-    const mappingEntry = subjectMapping[subjectKey];
-    if (mappingEntry) {
-      const opts: Option[] = mappingEntry.classes.map((cls) => ({
-        _id: cls._id,
-        label: classToString(cls),
-      }));
-      setClassOptions(opts);
-    } else {
-      setClassOptions([]);
-    }
-  };
-
+  // When a class is selected in update modal.
   const handleClassSelectUpdate = (classId: string) => {
     if (classId === "") {
       setUpdateForm((prev) => ({ ...prev, class: "" }));
@@ -405,6 +377,56 @@ const TeacherResources = () => {
     }
   };
 
+  // --- Dynamic Filter Dropdown Options for Filter Section ---
+
+  const getFilterSubjectOptions = () => {
+    if (filters.class) {
+      const unique = new Map<string, Option>();
+      allSubjects.forEach((sub) => {
+        if (sub.class && sub.class._id === filters.class) {
+          const key = `${sub.subject_code} - ${sub.subject_name}`.toLowerCase();
+          if (!unique.has(key)) {
+            unique.set(key, { _id: key, label: `${sub.subject_code} - ${sub.subject_name}` });
+          }
+        }
+      });
+      return Array.from(unique.values());
+    } else {
+      const unique = new Map<string, Option>();
+      allSubjects.forEach((sub) => {
+        if (sub.class) {
+          const key = `${sub.subject_code} - ${sub.subject_name}`.toLowerCase();
+          if (!unique.has(key)) {
+            unique.set(key, { _id: key, label: `${sub.subject_code} - ${sub.subject_name}` });
+          }
+        }
+      });
+      return Array.from(unique.values());
+    }
+  };
+
+  const getFilterClassOptions = () => {
+    if (filters.subject) {
+      const mappingEntry = subjectMapping[filters.subject];
+      if (mappingEntry) {
+        return mappingEntry.classes.map((cls) => ({
+          _id: cls._id,
+          label: classToString(cls),
+        }));
+      }
+      return [];
+    } else {
+      const unique = new Map<string, Option>();
+      allSubjects.forEach((sub) => {
+        if (sub.class && !unique.has(sub.class._id)) {
+          unique.set(sub.class._id, { _id: sub.class._id, label: classToString(sub.class) });
+        }
+      });
+      return Array.from(unique.values());
+    }
+  };
+
+  // --- Filtering Resources ---
   const filteredResources = resources.filter((resource) => {
     return (
       (!filters.filename ||
@@ -413,10 +435,14 @@ const TeacherResources = () => {
         )) &&
       (!filters.description ||
         resource.description.toLowerCase().includes(filters.description.toLowerCase())) &&
-      (!filters.subject || resource.subject._id === filters.subject) &&
+      (!filters.subject ||
+        getMappingKeyForSubject(resource.subject._id, subjectMapping) === filters.subject) &&
+      (!filters.class || resource.class._id === filters.class) &&
       (!filters.visibility || resource.visibility === filters.visibility)
     );
   });
+
+  // --- Handlers for Upload/Update/Delete ---
 
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -442,6 +468,7 @@ const TeacherResources = () => {
       await axios.post(`${BASE_URL}/api/resources/upload`, formData, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      console.log("Resource uploaded successfully!");
       setShowUploadModal(false);
       setUploadForm({
         files: [],
@@ -451,6 +478,7 @@ const TeacherResources = () => {
         visibility: "private",
       });
       fetchResources();
+      setInfoMessage("Resource uploaded successfully!");
     } catch (err: any) {
       console.error("Upload error:", err);
       setError(`Failed to upload resource: ${err.message}`);
@@ -476,7 +504,8 @@ const TeacherResources = () => {
       removedFiles: [],
     });
     const subjKey = getMappingKeyForSubject(resource.subject._id, subjectMapping);
-    handleSubjectSelect(subjKey);
+    // Use update-specific subject select handler.
+    handleSubjectSelectUpdate(subjKey);
     setShowUpdateModal(true);
   };
 
@@ -523,7 +552,7 @@ const TeacherResources = () => {
       formData.append("description", updateForm.description);
       formData.append("visibility", updateForm.visibility);
       formData.append("removeFiles", JSON.stringify(updateForm.removedFiles));
-      const { data } = await axios.put(
+      await axios.put(
         `${BASE_URL}/api/resources/edit/${selectedResource._id}`,
         formData,
         {
@@ -533,10 +562,11 @@ const TeacherResources = () => {
           },
         }
       );
+      console.log("Resource updated successfully!");
       setShowUpdateModal(false);
       setSelectedResource(null);
       fetchResources();
-      alert("Resource updated successfully!");
+      setInfoMessage("Resource updated successfully!");
     } catch (err: any) {
       console.error("Update error:", err);
       setError(`Failed to update resource: ${err.message}`);
@@ -558,6 +588,8 @@ const TeacherResources = () => {
       setResources((prev) => prev.filter((r) => r._id !== selectedResource._id));
       setShowDeleteModal(false);
       setSelectedResource(null);
+      console.log("Resource deleted successfully!");
+      setInfoMessage("Resource deleted successfully!");
     } catch (err: any) {
       console.error("Delete error:", err);
       setError(`Failed to delete resource: ${err.message}`);
@@ -623,8 +655,10 @@ const TeacherResources = () => {
           </button>
         </div>
       </div>
+
+      {/* Filters */}
       {showFilters && (
-        <div className="bg-white p-4 rounded shadow-md grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div className="bg-white p-4 rounded shadow-md grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
           <input
             type="text"
             placeholder="Filter by filename"
@@ -643,20 +677,22 @@ const TeacherResources = () => {
               setFilters({ ...filters, description: e.target.value })
             }
           />
-          <select
-            className="p-2 border rounded"
+          <SearchableDropdown
+            options={getFilterSubjectOptions()}
             value={filters.subject}
-            onChange={(e) =>
-              setFilters({ ...filters, subject: e.target.value })
+            onChange={(val) =>
+              setFilters((prev) => ({ ...prev, subject: val }))
             }
-          >
-            <option value="">All Subjects</option>
-            {subjectOptions.map((opt) => (
-              <option key={opt._id} value={opt._id}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+            placeholder="All Subjects"
+          />
+          <SearchableDropdown
+            options={getFilterClassOptions()}
+            value={filters.class}
+            onChange={(val) =>
+              setFilters((prev) => ({ ...prev, class: val }))
+            }
+            placeholder="All Classes"
+          />
           <select
             className="p-2 border rounded"
             value={filters.visibility}
@@ -674,6 +710,7 @@ const TeacherResources = () => {
                 filename: "",
                 description: "",
                 subject: "",
+                class: "",
                 visibility: "",
               })
             }
@@ -683,66 +720,69 @@ const TeacherResources = () => {
           </button>
         </div>
       )}
-      {/* Resource List */}
-      <div className="bg-white rounded-lg shadow overflow-x-auto">
+
+      {/* Desktop Table View */}
+      <div className="hidden md:block bg-white rounded-lg shadow overflow-x-auto">
         <table className="min-w-full">
           <thead className="bg-gray-50">
             <tr>
-              <th className="p-3 text-left">Filename(s) & Description</th>
-              <th className="p-3 text-left">Subject</th>
-              <th className="p-3 text-left">Class</th>
-              <th className="p-3 text-left">Visibility</th>
-              <th className="p-3 text-left">Date</th>
+              <th className="p-3 text-left border-r border-gray-200">Filename(s)</th>
+              <th className="p-3 text-left border-r border-gray-200">Description</th>
+              <th className="p-3 text-left border-r border-gray-200">Subject</th>
+              <th className="p-3 text-left border-r border-gray-200">Class</th>
+              <th className="p-3 text-left border-r border-gray-200">Visibility</th>
+              <th className="p-3 text-left border-r border-gray-200">Date</th>
               <th className="p-3 text-left">Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td
-                  colSpan={6}
-                  className="p-4 text-center text-blue-500"
-                >
+                <td colSpan={7} className="p-4 text-center text-blue-500">
                   Loading resources...
                 </td>
               </tr>
-            ) : resources.length > 0 ? (
-              resources.map((resource) => (
-                <tr
-                  key={resource._id}
-                  className="border-t hover:bg-gray-50"
-                >
-                  <td className="p-3">
-                    <div
-                      className="font-medium h-24 overflow-y-auto"
-                      // Adding a hover effect to each file name container.
-                    >
-                      {resource.files && resource.files.length > 0 ? (
-                        resource.files.map((file) => (
-                          <div
-                            key={file.file_id}
-                            className="p-1 hover:border hover:border-blue-500"
-                          >
-                            {file.filename}
-                          </div>
-                        ))
-                      ) : (
-                        "No files attached"
-                      )}
-                    </div>
-                    <div className="text-sm text-gray-600">
-                      {resource.description}
-                    </div>
+            ) : filteredResources.length > 0 ? (
+              filteredResources.map((resource) => (
+                <tr key={resource._id} className="border-t hover:bg-gray-50">
+                  {/* Filenames with numbering and total count */}
+                  <td className="p-3 border-r border-gray-200">
+                    {resource.files && resource.files.length > 0 ? (
+                      <>
+                        <div className="text-sm text-gray-500 mb-1">
+                          Total files: {resource.files.length}
+                        </div>
+                        <div className="font-medium h-24 overflow-y-auto space-y-1">
+                          {resource.files.map((file, index) => (
+                            <div
+                              key={file.file_id}
+                              className="p-1 border border-gray-100 hover:border-blue-500"
+                            >
+                              <span className="font-bold text-gray-700 mr-1">
+                                {index + 1}.
+                              </span>{" "}
+                              {file.filename}
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      "No files attached"
+                    )}
                   </td>
-                  <td className="p-3">
+                  {/* Description */}
+                  <td className="p-3 border-r border-gray-200">
+                    <div className="text-sm text-gray-600">{resource.description}</div>
+                  </td>
+                  <td className="p-3 border-r border-gray-200">
                     {resource.subject.subject_name}
                   </td>
-                  <td className="p-3">
+                  <td className="p-3 border-r border-gray-200">
                     {resource.class
                       ? `${resource.class.course} (${resource.class.specialization}) - ${resource.class.commencement_year} - ${resource.class.class_code}`
                       : "No class selected"}
                   </td>
-                  <td className="p-3">
+                  <td className="p-3 border-r border-gray-200">
                     <span
                       className={`px-2 py-1 rounded ${
                         resource.visibility === "public"
@@ -753,37 +793,34 @@ const TeacherResources = () => {
                       {resource.visibility}
                     </span>
                   </td>
-                  <td className="p-3">
+                  <td className="p-3 border-r border-gray-200">
                     {new Date(resource.createdAt).toLocaleDateString()}
                   </td>
                   <td className="p-3 flex gap-2">
                     <button
                       onClick={() => openDownloadModal(resource)}
-                      className="text-indigo-600 hover:text-indigo-900"
+                      className="text-indigo-600 hover:text-indigo-900 p-2"
                     >
-                      <Download size={18} />
+                      <Download size={20} />
                     </button>
                     <button
                       onClick={() => openUpdateModal(resource)}
-                      className="text-blue-500 hover:text-blue-700"
+                      className="text-blue-500 hover:text-blue-700 p-2"
                     >
-                      <Edit size={18} />
+                      <Edit size={20} />
                     </button>
                     <button
                       onClick={() => confirmDelete(resource)}
-                      className="text-red-500 hover:text-red-700"
+                      className="text-red-500 hover:text-red-700 p-2"
                     >
-                      <Trash size={18} />
+                      <Trash size={20} />
                     </button>
                   </td>
                 </tr>
               ))
             ) : (
               <tr>
-                <td
-                  colSpan={6}
-                  className="p-4 text-center text-gray-500"
-                >
+                <td colSpan={7} className="p-4 text-center text-gray-500">
                   No resources found
                 </td>
               </tr>
@@ -792,13 +829,101 @@ const TeacherResources = () => {
         </table>
       </div>
 
+      {/* Mobile Card View */}
+      <div className="block md:hidden space-y-4">
+        {loading ? (
+          <div className="text-center text-blue-500">Loading resources...</div>
+        ) : filteredResources.length > 0 ? (
+          filteredResources.map((resource) => (
+            <div key={resource._id} className="bg-white rounded-lg shadow p-4">
+              <div className="mb-2">
+                <strong>Filename(s):</strong>
+                <div className="mt-1">
+                  {resource.files && resource.files.length > 0 ? (
+                    <>
+                      <div className="text-sm text-gray-500 mb-1">
+                        Total files: {resource.files.length}
+                      </div>
+                      {resource.files.map((file, index) => (
+                        <div
+                          key={file.file_id}
+                          className="p-1 border border-gray-100 hover:border-blue-500"
+                        >
+                          <span className="font-bold text-gray-700 mr-1">
+                            {index + 1}.
+                          </span>{" "}
+                          {file.filename}
+                        </div>
+                      ))}
+                    </>
+                  ) : (
+                    "No files attached"
+                  )}
+                </div>
+              </div>
+              <div className="mb-2">
+                <strong>Description:</strong>
+                <div className="mt-1 text-sm text-gray-600">
+                  {resource.description}
+                </div>
+              </div>
+              <div className="mb-2">
+                <strong>Subject:</strong> {resource.subject.subject_name}
+              </div>
+              <div className="mb-2">
+                <strong>Class:</strong>{" "}
+                {resource.class
+                  ? `${resource.class.course} (${resource.class.specialization}) - ${resource.class.commencement_year} - ${resource.class.class_code}`
+                  : "No class selected"}
+              </div>
+              <div className="mb-2">
+                <strong>Visibility:</strong>{" "}
+                <span
+                  className={`px-2 py-1 rounded ${
+                    resource.visibility === "public"
+                      ? "bg-green-100 text-green-600"
+                      : "bg-yellow-100 text-yellow-600"
+                  }`}
+                >
+                  {resource.visibility}
+                </span>
+              </div>
+              <div className="mb-2">
+                <strong>Date:</strong>{" "}
+                {new Date(resource.createdAt).toLocaleDateString()}
+              </div>
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={() => openDownloadModal(resource)}
+                  className="text-indigo-600 hover:text-indigo-900 p-2"
+                >
+                  <Download size={20} />
+                </button>
+                <button
+                  onClick={() => openUpdateModal(resource)}
+                  className="text-blue-500 hover:text-blue-700 p-2"
+                >
+                  <Edit size={20} />
+                </button>
+                <button
+                  onClick={() => confirmDelete(resource)}
+                  className="text-red-500 hover:text-red-700 p-2"
+                >
+                  <Trash size={20} />
+                </button>
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="text-center text-gray-500">No resources found</div>
+        )}
+      </div>
+
       {/* Upload Modal */}
       {showUploadModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-start pt-10 z-50">
           <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-            <h2 className="text-xl font-bold mb-4">
-              Upload New Resource
-            </h2>
+            <h2 className="text-xl font-bold mb-4">Upload New Resource</h2>
             <form onSubmit={handleUpload} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700">
@@ -808,10 +933,7 @@ const TeacherResources = () => {
                   options={subjectOptions}
                   value={
                     uploadForm.subject
-                      ? getMappingKeyForSubject(
-                          uploadForm.subject,
-                          subjectMapping
-                        )
+                      ? getMappingKeyForSubject(uploadForm.subject, subjectMapping)
                       : ""
                   }
                   onChange={(id) => {
@@ -869,7 +991,9 @@ const TeacherResources = () => {
                         key={index}
                         className="flex items-center justify-between"
                       >
-                        <span>{file.name}</span>
+                        <span>
+                          {index + 1}. {file.name}
+                        </span>
                         <button
                           type="button"
                           onClick={() => removeUploadFile(index)}
@@ -945,10 +1069,7 @@ const TeacherResources = () => {
                   options={subjectOptions}
                   value={
                     updateForm.subject
-                      ? getMappingKeyForSubject(
-                          updateForm.subject,
-                          subjectMapping
-                        )
+                      ? getMappingKeyForSubject(updateForm.subject, subjectMapping)
                       : ""
                   }
                   onChange={(id) => {
@@ -958,7 +1079,7 @@ const TeacherResources = () => {
                         ...prev,
                         subject: mappingEntry.subject._id,
                       }));
-                      handleSubjectSelect(id);
+                      handleSubjectSelectUpdate(id);
                     } else {
                       setUpdateForm((prev) => ({ ...prev, subject: "" }));
                     }
@@ -975,7 +1096,7 @@ const TeacherResources = () => {
                   value={updateForm.class}
                   onChange={(id) => {
                     setUpdateForm((prev) => ({ ...prev, class: id }));
-                    handleClassSelect(id);
+                    handleClassSelectUpdate(id);
                   }}
                   placeholder="Select Class"
                 />
@@ -986,13 +1107,10 @@ const TeacherResources = () => {
                 </label>
                 {updateForm.existingFiles && updateForm.existingFiles.length > 0 ? (
                   <ul>
-                    {updateForm.existingFiles.map((file) => (
-                      <li
-                        key={file.file_id}
-                        className="flex flex-col sm:flex-row items-start sm:items-center justify-between"
-                      >
+                    {updateForm.existingFiles.map((file, index) => (
+                      <li key={file.file_id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between">
                         <span className="p-1 hover:border hover:border-blue-500">
-                          {file.filename}
+                          {index + 1}. {file.filename}
                         </span>
                         <button
                           type="button"
@@ -1021,12 +1139,9 @@ const TeacherResources = () => {
                 {updateForm.files.length > 0 && (
                   <ul className="mt-2">
                     {updateForm.files.map((file, index) => (
-                      <li
-                        key={index}
-                        className="flex flex-col sm:flex-row items-start sm:items-center justify-between"
-                      >
+                      <li key={index} className="flex flex-col sm:flex-row items-start sm:items-center justify-between">
                         <span className="p-1 hover:border hover:border-blue-500">
-                          {file.name}
+                          {index + 1}. {file.name}
                         </span>
                         <button
                           type="button"
@@ -1101,7 +1216,9 @@ const TeacherResources = () => {
               <p>
                 <strong>Filename(s):</strong>{" "}
                 {selectedResource.files && selectedResource.files.length > 0
-                  ? selectedResource.files.map((file) => file.filename).join("\n")
+                  ? selectedResource.files
+                      .map((file, index) => `${index + 1}. ${file.filename}`)
+                      .join("\n")
                   : "No files attached"}
               </p>
               <p>
@@ -1176,22 +1293,23 @@ const TeacherResources = () => {
               <>
                 <p className="mb-4">Select files to download:</p>
                 <div className="max-h-60 overflow-y-auto mb-4">
-                  {downloadResource.files.map((file) => (
-                    <label
-                      key={file.file_id}
-                      className="flex items-center mb-2"
-                    >
+                  {downloadResource.files.map((file, index) => (
+                    <label key={file.file_id} className="flex items-center mb-2">
                       <input
                         type="checkbox"
                         checked={selectedDownloadFiles.has(file.file_id)}
-                        onChange={() =>
-                          toggleDownloadFileSelection(file.file_id)
-                        }
+                        onChange={() => toggleDownloadFileSelection(file.file_id)}
                         className="mr-2"
                       />
+                      <span className="font-bold text-gray-700 mr-1">
+                        {index + 1}.
+                      </span>
                       {file.filename}
                     </label>
                   ))}
+                </div>
+                <div className="mb-4 text-sm text-gray-500">
+                  Selected files: {selectedDownloadFiles.size}
                 </div>
                 <div className="flex justify-between">
                   <button
@@ -1224,6 +1342,22 @@ const TeacherResources = () => {
               className="px-4 py-2 bg-red-600 text-white rounded"
             >
               Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Info/Success Modal */}
+      {infoMessage && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-lg max-w-md">
+            <h2 className="text-xl font-bold mb-4">Success</h2>
+            <p className="mb-4">{infoMessage}</p>
+            <button
+              onClick={() => setInfoMessage("")}
+              className="px-4 py-2 bg-green-600 text-white rounded"
+            >
+              OK
             </button>
           </div>
         </div>
