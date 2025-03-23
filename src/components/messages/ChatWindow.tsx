@@ -1,107 +1,668 @@
-import React, { useState } from 'react';
-import { Paperclip, Send, Smile } from 'lucide-react';
-import type { Conversation, Message, User } from '../../types';
+import React, { useEffect, useState, useRef } from "react";
+import {
+  Paperclip,
+  Send,
+  Smile,
+  Edit,
+  Trash2,
+  FileText,
+  Image,
+  Video,
+  MoreVertical
+} from "lucide-react"; // 🧠 Added `MoreVertical` for the dropdown arrow
+
+import io from "socket.io-client";
+import axios from "axios";
+import { useAuth } from "../../context/AuthContext";
+import EmojiPicker from "emoji-picker-react"; // ✅ Make sure this library is installed
+import type { Conversation, Message } from "../../types";
 
 interface ChatWindowProps {
-  conversation: Conversation;
-  currentUser: User;
-  onSendMessage: (content: string) => void;
+  conversation: Conversation | null;
+  onSendMessage: (content: string, file?: File | null) => void;
+  authUser: any;
+  prefilledMessage?: string;
+  setSelectedConversation: (c: Conversation) => void;
+  setPrefilledMessage: (msg: string) => void;
+  replyToMessage?: Message | null;               // ✅ NEW
+  setReplyToMessage?: (msg: Message | null) => void; // ✅ NEW
 }
+
+
+const socket = io("http://localhost:5001");
 
 export default function ChatWindow({
   conversation,
-  currentUser,
   onSendMessage,
+  authUser,  // ✅ renamed
+  prefilledMessage,              // ✅ ADD THIS
+  setSelectedConversation,       // ✅ AND THIS
+  setPrefilledMessage,
+  replyToMessage,         
+  setReplyToMessage            // ✅ AND THIS
 }: ChatWindowProps) {
-  const [newMessage, setNewMessage] = useState('');
-  const otherParticipant = conversation.participants.find(
-    (p) => p.id !== currentUser.id
-  )!;
+  const replyTo = replyToMessage;
+  const setReplyTo = setReplyToMessage!;
+  
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [newMessage, setNewMessage] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const token = localStorage.getItem("token");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [editingMessage, setEditingMessage] = useState<Message | null>(null);
+  const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
+  const [dropdownFor, setDropdownFor] = useState<string | null>(null);
+  // After states like dropdownFor, editingMessage...
+  const [emojiPickerFor, setEmojiPickerFor] = useState<string | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const { user: currentUser } = useAuth();
+  const conversationId = conversation?._id || conversation?.id;
 
-  const handleSend = () => {
-    if (newMessage.trim()) {
-      onSendMessage(newMessage);
-      setNewMessage('');
+  const handleClearReply = () => {
+    setReplyTo(null);
+  };
+  
+  // 👇 ADD THIS RIGHT HERE
+  const otherParticipant = !conversation?.isGroup
+  ? conversation?.participants.find(
+      (p) =>
+        (p._id?.toString() || p.id?.toString()) !==
+        (currentUser.id?.toString() || currentUser._id?.toString())
+    )
+  : null;
+
+  // Placeholder handlers for dropdown options
+const onReply = (message: Message) => {
+  setReplyTo(message);
+};
+
+// const onReplyPrivately = (message: Message) => {
+//   if (!conversation?.isGroup) return; // no private reply in 1-1
+//   // Create 1-1 conversation logic (optional enhancement later)
+//   setReplyTo(message); // For now, treat it as normal reply
+// };
+const onReplyPrivately = async (message: Message) => {
+  const senderId = message.sender;
+  if (senderId === currentUser.id) return;
+
+  try {
+    const token = localStorage.getItem("token");
+
+    // 1. Find or create conversation with this user
+    const response = await axios.post(
+      "http://localhost:5001/api/messages/find-or-create",
+      { participantId: senderId },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+
+    const oneToOneConvo = response.data;
+
+    // 2. Switch chat window to that conversation
+    ; // Clear any old prefilled text
+    setSelectedConversation(oneToOneConvo);
+setReplyToMessage(message); // ✅ This works now across remount
+setPrefilledMessage("");    // ✅ don't use input text
+
+
+  } catch (err) {
+    console.error("Failed to initiate private reply:", err);
+  }
+};
+
+useEffect(() => {
+  if (prefilledMessage) {
+    setNewMessage(prefilledMessage);
+    setShowEmojiPicker(false);
+    setPrefilledMessage(""); // ✅ Clear after using once
+  }
+}, [prefilledMessage]);
+
+
+useEffect(() => {
+  function handleClickOutside(event: MouseEvent) {
+    if (
+      dropdownRef.current &&
+      !dropdownRef.current.contains(event.target as Node)
+    ) {
+      setDropdownFor(null);
+    }
+  }
+
+  document.addEventListener("mousedown", handleClickOutside);
+  return () => {
+    document.removeEventListener("mousedown", handleClickOutside);
+  };
+}, []);
+
+
+  const onForward = (message: Message) => {
+    console.log("Forward message:", message.content);
+  };
+
+  const onStar = (message: Message) => {
+    console.log("Star message:", message.content);
+  };
+
+  const onPin = (message: Message) => {
+    console.log("Pin message:", message.content);
+  };
+
+  const onSelect = (message: Message) => {
+    console.log("Selected message:", message.content);
+  };
+
+  const onShare = (message: Message) => {
+    console.log("Share message:", message.content);
+  };
+
+  const handleReaction = (messageId: string, emoji: string) => {
+    console.log(`Reacted to message ${messageId} with ${emoji}`);
+  };
+
+  // ✅ Edit Message
+  const handleEditMessage = async () => {
+    if (!editingMessage) return;
+
+    try {
+      const response = await axios.put(
+        `http://localhost:5001/api/messages/edit/${editingMessage._id}`,
+        { content: newMessage },
+        {
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      socket.emit("editMessage", response.data); // ✅ Emit
+
+      setMessages((prevMessages) =>
+        prevMessages.map((msg) => (msg._id === editingMessage._id ? response.data : msg))
+      );
+
+      setEditingMessage(null); // ✅ Reset edit state
+      setNewMessage("");       // ✅ Clear input
+    } catch (error) {
+      console.error("❌ Failed to edit message:", error);
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
+
+  // ✅ Delete Message
+  const handleDeleteMessage = async (messageId: string, forEveryone: boolean = false) => {
+    try {
+      await axios.put(
+        `http://localhost:5001/api/messages/delete/${messageId}`,
+        { forEveryone },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      socket.emit("deleteMessage", { id: messageId, forEveryone, userId: currentUser.id });
+
+      if (forEveryone) {
+        setMessages((prev) => prev.filter((msg) => msg._id !== messageId));
+      } else {
+        setMessages((prev) =>
+          prev.filter((msg) => msg._id !== messageId || msg.deletedBy?.includes(currentUser.id))
+        );
+      }
+    } catch (error) {
+      console.error("❌ Failed to delete message:", error);
     }
   };
+
+
+  useEffect(() => {
+    if (conversation) {
+      fetchMessages();
+      socket.emit("join", currentUser.id);
+    }
+
+    socket.on("newMessage", (message: Message) => {
+      if (message.conversationId === conversation?._id) {
+        setMessages((prevMessages) => [...prevMessages, message]);
+      }
+    });
+
+    socket.on("messageEdited", (editedMessage: Message) => {
+      setMessages((prevMessages) =>
+        prevMessages.map((msg) => (msg._id === editedMessage._id ? editedMessage : msg))
+      );
+    });
+
+    socket.on("messageDeleted", ({ id }) => {
+      setMessages((prevMessages) => prevMessages.filter((msg) => msg._id !== id));
+    });
+
+    return () => {
+      socket.off("newMessage");
+      socket.off("messageEdited");
+      socket.off("messageDeleted");
+    };
+  }, [conversation]);
+
+  // ✅ Fetch messages from the backend
+  const fetchMessages = async () => {
+    // In fetchMessages:
+    if (!conversation?._id) {
+      setLoading(false);
+      setMessages([]);
+      return;
+    }
+
+    try {
+      if (!token) {
+        setError("No authentication token found.");
+        return;
+      }
+
+      const response = await axios.get(
+        `http://localhost:5001/api/messages/conversation/${conversation._id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      setMessages(response.data);
+    } catch (error) {
+      console.error("Error fetching messages:", error);
+      setError("Failed to load messages.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ✅ Handle sending messages & files
+  const handleSend = async () => {
+    if (editingMessage) {
+      await handleEditMessage();
+      return;
+    }
+
+    if (!newMessage.trim() && !file) return;
+
+    let filePath = null;
+
+    if (file) {
+      filePath = await uploadFile(file);
+      if (!filePath) {
+        console.error("❌ File upload failed. Message not sent.");
+        return;
+      }
+    }
+
+    const messageData: any = {
+      conversationId: conversation?._id,
+      content: newMessage,
+      file: filePath,
+      replyTo: replyTo?._id || null,
+    };
+    
+
+    if (!conversation?.isGroup) {
+      messageData.receiver = otherParticipant?._id || otherParticipant?.id;
+    }
+    if (replyTo) {
+      messageData.replyTo = replyTo._id;
+    }
+    
+    try {
+      const response = await axios.post("http://localhost:5001/api/messages/send", messageData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      socket.emit("sendMessage", response.data);
+
+      // ✅ DO NOT manually add to local state
+      // setMessages((prevMessages) => [...prevMessages, response.data]); ❌
+
+      // ✅ Clear input fields
+      setNewMessage("");
+      setFile(null);
+      setReplyTo(null); // ✅ Clear reply state after sending
+
+    } catch (error) {
+      console.error("❌ Failed to send message:", error);
+    }
+  };
+
+
+
+  // ✅ Upload file to GridFS
+  const uploadFile = async (file: File) => {
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      console.log("📤 Uploading file to server...");
+      const response = await axios.post("http://localhost:5001/api/attachments/upload", formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      console.log("📁 Upload response:", response.data);
+
+      if (response.data && response.data.filePath) {
+        return response.data.filePath;
+      } else {
+        console.error("❌ No file path returned from server.");
+        return null;
+      }
+    } catch (error) {
+      console.error("❌ Failed to upload file:", error);
+      return null;
+    }
+  };
+
+
 
   return (
-    <div className="flex-1 flex flex-col h-full">
-      <div className="p-4 border-b border-gray-200 bg-white">
-        <div className="flex items-center space-x-3">
+    <div className="flex-1 flex flex-col h-full bg-gray-50">
+      {/* Chat Header */}
+      {/* Chat Header */}
+      <div className="p-4 border-b border-gray-200 bg-white flex items-center space-x-3">
+        {conversation?.isGroup ? (
+          <div className="w-10 h-10 rounded-full bg-indigo-200 flex items-center justify-center text-indigo-700 font-bold">
+            {conversation.groupName?.charAt(0).toUpperCase() || "G"}
+          </div>
+        ) : (
           <img
-            src={otherParticipant.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(otherParticipant.name)}`}
-            alt={otherParticipant.name}
+            src={
+              otherParticipant?.avatar ||
+              `https://ui-avatars.com/api/?name=${encodeURIComponent(otherParticipant?.name || "User")}`
+            }
+            alt={otherParticipant?.name || "User"}
             className="w-10 h-10 rounded-full"
           />
-          <div>
-            <h2 className="font-medium text-gray-900">{otherParticipant.name}</h2>
-            <p className="text-sm text-gray-500 capitalize">{otherParticipant.role}</p>
-          </div>
-        </div>
+        )}
+
+        <h2 className="font-medium text-gray-900">
+          {conversation?.isGroup
+            ? conversation.groupName || "Unnamed Group"
+            : otherParticipant?.name || "Unknown"}
+        </h2>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {conversation.messages?.map((message: Message) => {
-          const isCurrentUser = message.senderId === currentUser.id;
-          return (
+
+      {/* Messages */}
+
+      {/* Messages Container */}
+      {/* Messages Container */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {messages
+          .filter((message) => !message.deletedBy?.includes(currentUser.id))
+          .map((message) => (
             <div
-              key={message.id}
-              className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}
+              key={message._id}
+              className={`flex ${
+                (message.sender?._id || message.sender?.id || message.sender) === currentUser.id
+                  ? 'justify-end'
+                  : 'justify-start'
+              }`}
+                            onMouseEnter={() => setHoveredMessageId(message._id)}
+              onMouseLeave={() => setHoveredMessageId(null)}
             >
-              <div
-                className={`max-w-[70%] rounded-lg p-3 ${
-                  isCurrentUser
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-gray-100 text-gray-900'
-                }`}
-              >
-                <p className="text-sm">{message.content}</p>
-                <span className="text-xs opacity-75 mt-1 block">
-                  {new Date(message.timestamp).toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                </span>
+{message.replyTo && (
+  <div className="text-xs text-gray-700 mb-1 p-2 border-l-4 border-indigo-400 bg-indigo-50 rounded">
+    <div className="font-medium">{message.replyTo.senderName || "Someone"}</div>
+    <div className="truncate max-w-xs">{message.replyTo.content || "Attachment"}</div>
+  </div>
+)}
+
+
+              {/* Message Bubble */}
+              <div className={`relative max-w-[75%] lg:max-w-[60%] p-3 rounded-lg ${
+  (message.sender?._id || message.sender?.id || message.sender) === currentUser.id
+    ? 'bg-indigo-600 text-white'
+    : 'bg-gray-100 text-gray-900'
+}`}>
+
+
+                {/* Sender Name (group only) */}
+                {conversation?.isGroup && (message.sender?._id || message.sender?.id) !== currentUser.id && (
+  <p className="text-xs font-semibold mb-1 opacity-75 text-gray-700">
+    {typeof message.sender === "object" && "name" in message.sender
+      ? message.sender.name
+      : "Unknown"}
+  </p>
+)}
+
+
+                {/* Message Content */}
+                {message.file ? (
+                  message.file.match(/\.(jpg|jpeg|png|gif)$/i) ? (
+                    <img
+                      src={`http://localhost:5001/api/attachments/${message.file}`}
+                      alt="Sent file"
+                      className="max-w-full rounded-md max-h-64 object-cover"
+                    />
+                  ) : message.file.match(/\.(mp4|mov|avi)$/i) ? (
+                    <video
+                      controls
+                      className="max-w-full rounded-md max-h-64"
+                    >
+                      <source src={`http://localhost:5001/api/attachments/${message.file}`} />
+                    </video>
+                  ) : (
+                    <a
+                      href={`http://localhost:5001/api/attachments/${message.file}`}
+                      className="flex items-center space-x-2 text-blue-300 hover:text-blue-400"
+                      download
+                    >
+                      <FileText className="w-5 h-5" />
+                      <span>Download File</span>
+                    </a>
+                  )
+                ) : (
+                  <p className="break-words whitespace-pre-wrap">{message.content}</p>
+                )}
+
+                {/* Timestamp */}
+                <div className="flex items-center justify-end gap-2 mt-2">
+                  <span className="text-xs opacity-75">
+                    {new Date(message.timestamp).toLocaleTimeString([], {
+                      hour: 'numeric',
+                      minute: '2-digit'
+                    })}
+                  </span>
+                </div>
+
+                {/* Dropdown Trigger */}
+                {hoveredMessageId === message._id && (
+                  <button
+                    onClick={() => setDropdownFor(message._id)}
+                    className="absolute -bottom-3 right-2 bg-white rounded-full shadow-sm p-1 hover:bg-gray-50 border border-gray-200"
+                  >
+                    <MoreVertical className="w-4 h-4 text-gray-600" />
+                  </button>
+                )}
+
+                {/* Dropdown Menu */}
+                {dropdownFor === message._id && (
+                  <div
+                  ref={dropdownRef}
+                  className="absolute left-0 top-full mt-1 w-48 bg-white border rounded-lg shadow-lg z-[1000] text-sm text-gray-700 overflow-hidden"
+                >
+                
+                  <button
+  onClick={() => setReplyTo(message)}
+  className="block w-full px-4 py-2 hover:bg-gray-100 text-left"
+>
+  ↩️ Reply
+</button>
+                    <button onClick={() => navigator.clipboard.writeText(message.content)} className="block w-full px-4 py-2 hover:bg-gray-100 text-left">📋 Copy</button>
+                    {message.sender !== currentUser.id && (
+  <button
+    onClick={() => onReplyPrivately(message)}
+    className="block w-full px-4 py-2 hover:bg-gray-100 text-left"
+  >
+    🙈 Reply Privately
+  </button>
+)}
+                  <button onClick={() => onForward(message)} className="block w-full px-4 py-2 hover:bg-gray-100 text-left">🔁 Forward</button>
+                    <button onClick={() => onStar(message)} className="block w-full px-4 py-2 hover:bg-gray-100 text-left">⭐ Star</button>
+                    <button onClick={() => onPin(message)} className="block w-full px-4 py-2 hover:bg-gray-100 text-left">📌 Pin</button>
+
+                    {message.sender === currentUser.id ? (
+                      <>
+                        <button
+                          onClick={() => {
+                            setEditingMessage(message);
+                            setNewMessage(message.content); // Prefill input
+                          }}
+                          className="block w-full px-4 py-2 hover:bg-gray-100 text-left"
+                        >
+                          ✏️ Edit
+                        </button>
+
+                        <button
+                          onClick={() => handleDeleteMessage(message._id, true)}
+                          className="block w-full px-4 py-2 hover:bg-gray-100 text-left text-red-500"
+                        >
+                          🗑️ Delete for Everyone
+                        </button>
+                        <button
+                          onClick={() => handleDeleteMessage(message._id, false)}
+                          className="block w-full px-4 py-2 hover:bg-gray-100 text-left text-red-500"
+                        >
+                          🗑️ Delete for Me
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => handleDeleteMessage(message._id, false)}
+                        className="block w-full px-4 py-2 hover:bg-gray-100 text-left text-red-500"
+                      >
+                        🗑️ Delete for Me
+                      </button>
+                    )}
+
+
+                    <button onClick={() => onSelect(message)} className="block w-full px-4 py-2 hover:bg-gray-100 text-left">✅ Select</button>
+                    <button onClick={() => onShare(message)} className="block w-full px-4 py-2 hover:bg-gray-100 text-left">📤 Share</button>
+
+                    {/* Emoji Reactions */}
+                    <div className="px-3 py-2 border-t">
+                      <div className="flex justify-between items-center">
+                        {['👍', '❤️', '😂', '😮', '😢', '🙏'].map((emoji) => (
+                          <button
+                            key={emoji}
+                            className="hover:scale-110 transition-transform"
+                            onClick={() => handleReaction(message._id, emoji)}
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                        <button
+                          onClick={() => setEmojiPickerFor(message._id)}
+                          className="text-gray-500 hover:text-indigo-600"
+                        >
+                          <Smile className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      {/* Emoji Picker */}
+                      {emojiPickerFor === message._id && (
+                        <div className="mt-2">
+                          <EmojiPicker
+                            height={300}
+                            width="100%"
+                            onEmojiClick={(emojiObject) => {
+                              handleReaction(message._id, emojiObject.emoji);
+                              setEmojiPickerFor(null);
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
-          );
-        })}
+          ))}
       </div>
 
-      <div className="p-4 border-t border-gray-200 bg-white">
-        <div className="flex items-end space-x-3">
-          <button className="p-2 text-gray-500 hover:text-gray-600">
-            <Paperclip className="w-5 h-5" />
-          </button>
-          <button className="p-2 text-gray-500 hover:text-gray-600">
-            <Smile className="w-5 h-5" />
-          </button>
-          <div className="flex-1">
-            <textarea
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              onKeyDown={handleKeyPress}
-              placeholder="Type a message..."
-              className="w-full p-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 max-h-32 resize-none"
-              rows={1}
-            />
-          </div>
-          <button
-            onClick={handleSend}
-            disabled={!newMessage.trim()}
-            className="p-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Send className="w-5 h-5" />
+
+      {/* File Preview Before Sending */}
+      {file && (
+        <div className="flex items-center space-x-2 p-2 bg-gray-100 rounded-lg">
+          {file.type.startsWith("image/") ? (
+            <img src={URL.createObjectURL(file)} alt="Preview" className="w-16 h-16 rounded-md" />
+          ) : file.type.startsWith("video/") ? (
+            <video className="w-16 h-16 rounded-md" controls>
+              <source src={URL.createObjectURL(file)} />
+            </video>
+          ) : (
+            <div className="flex items-center space-x-2">
+              <FileText className="w-5 h-5 text-gray-500" />
+              <span className="text-sm">{file.name}</span>
+            </div>
+          )}
+          <button onClick={() => setFile(null)} className="text-red-500">
+            ✕
           </button>
         </div>
+      )}
+{replyTo && (
+  <div className="bg-gray-100 border-l-4 border-indigo-500 p-2 mb-2 rounded relative">
+<p className="text-xs text-gray-500">
+  Replying to {replyTo.sender === currentUser.id ? "yourself" : replyTo.sender?.name || "Someone"}
+</p>
+
+    <p className="text-sm italic text-gray-800 truncate">{replyTo.content}</p>
+    <button
+      onClick={() => setReplyTo(null)}
+      className="absolute top-1 right-2 text-gray-400 hover:text-red-500"
+    >
+      ✕
+    </button>
+  </div>
+)}
+
+      {/* Message Input */}
+      <div className="p-4 border-t border-gray-200 bg-white flex items-center space-x-3">
+        <button onClick={() => setShowEmojiPicker(!showEmojiPicker)}><Smile className="w-6 h-6 text-gray-500" /></button>
+        {showEmojiPicker && (
+          <div className="absolute bottom-16 left-4 z-10 bg-white shadow-lg p-2 rounded-lg">
+            <EmojiPicker
+              onEmojiClick={(emojiObject) => setNewMessage((prev) => prev + emojiObject.emoji)}
+            />
+          </div>
+        )}
+        <input type="file" ref={fileInputRef} hidden onChange={(e) => setFile(e.target.files?.[0] || null)} />
+        <button onClick={() => fileInputRef.current?.click()}><Paperclip className="w-6 h-6 text-gray-500" /></button>
+        <input type="text" className="flex-1 border p-2 rounded-lg" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Type a message..." />
+        <button
+          onClick={handleSend}
+          className="bg-indigo-600 text-white px-4 py-2 rounded-lg"
+        >
+          {editingMessage ? "Update" : <Send className="w-6 h-6" />}
+        </button>
+        {editingMessage && (
+          <button
+            onClick={() => {
+              setEditingMessage(null);
+              setNewMessage("");
+            }}
+            className="text-gray-500 hover:text-red-500 text-sm px-2"
+          >
+            Cancel Edit
+          </button>
+        )}
+
       </div>
     </div>
   );

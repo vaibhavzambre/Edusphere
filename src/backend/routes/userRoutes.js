@@ -9,6 +9,16 @@ const router = express.Router();
  * @desc    Fetch all students with their SAP ID
  * @access  Private (Only authenticated users)
  */
+router.get("/all", authMiddleware, async (req, res) => {
+  try {
+    const users = await User.find({}, "name email role avatar");
+    res.json(users);
+  } catch (error) {
+    console.error("Error fetching users:", error);
+    res.status(500).json({ error: "Failed to fetch users" });
+  }
+});
+
 router.get("/students", authMiddleware,checkAdmin, async (req, res) => {
   try {
     const students = await User.find({ role: "student" })
