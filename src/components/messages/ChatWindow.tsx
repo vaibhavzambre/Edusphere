@@ -38,12 +38,12 @@ export default function ChatWindow({
   prefilledMessage,              // ✅ ADD THIS
   setSelectedConversation,       // ✅ AND THIS
   setPrefilledMessage,
-  replyToMessage,         
+  replyToMessage,
   setReplyToMessage            // ✅ AND THIS
 }: ChatWindowProps) {
   const replyTo = replyToMessage;
   const setReplyTo = setReplyToMessage!;
-  
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -60,82 +60,101 @@ export default function ChatWindow({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { user: currentUser } = useAuth();
   const conversationId = conversation?._id || conversation?.id;
+  const [reactionPopupFor, setReactionPopupFor] = useState<string | null>(null);
+  const reactionPopupRef = useRef<HTMLDivElement>(null);
 
   const handleClearReply = () => {
     setReplyTo(null);
   };
-  
+
   // 👇 ADD THIS RIGHT HERE
   const otherParticipant = !conversation?.isGroup
-  ? conversation?.participants.find(
+    ? conversation?.participants.find(
       (p) =>
         (p._id?.toString() || p.id?.toString()) !==
         (currentUser.id?.toString() || currentUser._id?.toString())
     )
-  : null;
+    : null;
 
   // Placeholder handlers for dropdown options
-const onReply = (message: Message) => {
-  setReplyTo(message);
-};
-
-// const onReplyPrivately = (message: Message) => {
-//   if (!conversation?.isGroup) return; // no private reply in 1-1
-//   // Create 1-1 conversation logic (optional enhancement later)
-//   setReplyTo(message); // For now, treat it as normal reply
-// };
-const onReplyPrivately = async (message: Message) => {
-  const senderId = message.sender;
-  if (senderId === currentUser.id) return;
-
-  try {
-    const token = localStorage.getItem("token");
-
-    // 1. Find or create conversation with this user
-    const response = await axios.post(
-      "http://localhost:5001/api/messages/find-or-create",
-      { participantId: senderId },
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-
-    const oneToOneConvo = response.data;
-
-    // 2. Switch chat window to that conversation
-    ; // Clear any old prefilled text
-    setSelectedConversation(oneToOneConvo);
-setReplyToMessage(message); // ✅ This works now across remount
-setPrefilledMessage("");    // ✅ don't use input text
-
-
-  } catch (err) {
-    console.error("Failed to initiate private reply:", err);
-  }
-};
-
-useEffect(() => {
-  if (prefilledMessage) {
-    setNewMessage(prefilledMessage);
-    setShowEmojiPicker(false);
-    setPrefilledMessage(""); // ✅ Clear after using once
-  }
-}, [prefilledMessage]);
-
-
-useEffect(() => {
-  function handleClickOutside(event: MouseEvent) {
-    if (
-      dropdownRef.current &&
-      !dropdownRef.current.contains(event.target as Node)
-    ) {
-      setDropdownFor(null);
-    }
-  }
-
-  document.addEventListener("mousedown", handleClickOutside);
-  return () => {
-    document.removeEventListener("mousedown", handleClickOutside);
+  const onReply = (message: Message) => {
+    setReplyTo(message);
   };
-}, []);
+
+  // const onReplyPrivately = (message: Message) => {
+  //   if (!conversation?.isGroup) return; // no private reply in 1-1
+  //   // Create 1-1 conversation logic (optional enhancement later)
+  //   setReplyTo(message); // For now, treat it as normal reply
+  // };
+  const onReplyPrivately = async (message: Message) => {
+    const senderId = message.sender;
+    if (senderId === currentUser.id) return;
+
+    try {
+      const token = localStorage.getItem("token");
+
+      // 1. Find or create conversation with this user
+      const response = await axios.post(
+        "http://localhost:5001/api/messages/find-or-create",
+        { participantId: senderId },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      const oneToOneConvo = response.data;
+
+      // 2. Switch chat window to that conversation
+      ; // Clear any old prefilled text
+      setSelectedConversation(oneToOneConvo);
+      setReplyToMessage(message); // ✅ This works now across remount
+      setPrefilledMessage("");    // ✅ don't use input text
+
+
+    } catch (err) {
+      console.error("Failed to initiate private reply:", err);
+    }
+  };
+
+  useEffect(() => {
+
+    if (prefilledMessage) {
+      setNewMessage(prefilledMessage);
+      setShowEmojiPicker(false);
+      setPrefilledMessage(""); // ✅ Clear after using once
+    }
+  }, [prefilledMessage]);
+
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node)
+      ) {
+        setDropdownFor(null);
+      }
+      const clickedNode = event.target as Node;
+
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(clickedNode)
+      ) {
+        setDropdownFor(null);
+      }
+
+      // Close emoji reaction popup
+      if (
+        reactionPopupRef.current &&
+        !reactionPopupRef.current.contains(clickedNode)
+      ) {
+        setReactionPopupFor(null);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
 
   const onForward = (message: Message) => {
@@ -158,9 +177,31 @@ useEffect(() => {
     console.log("Share message:", message.content);
   };
 
-  const handleReaction = (messageId: string, emoji: string) => {
-    console.log(`Reacted to message ${messageId} with ${emoji}`);
+  const handleReaction = async (messageId: string, emoji: string) => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await axios.put(
+        `http://localhost:5001/api/messages/react/${messageId}`,
+        { emoji },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+
+      socket.emit("reacted", response.data); // optional but useful fallback
+
+      // Don't manually update messages here if socket handles it
+      // socket.emit("reacted", response.data); // optional
+
+    } catch (error) {
+      console.error("❌ Failed to react to message:", error);
+    }
   };
+
+
 
   // ✅ Edit Message
   const handleEditMessage = async () => {
@@ -219,35 +260,54 @@ useEffect(() => {
     }
   };
 
+  useEffect(() => {
+    if (conversation?._id) {
+      socket.emit("joinConversation", conversation._id);
+    }
+  }, [conversation?._id]);
+  
 
   useEffect(() => {
     if (conversation) {
       fetchMessages();
       socket.emit("join", currentUser.id);
+      socket.emit("joinConversation", conversation._id);
     }
-
-    socket.on("newMessage", (message: Message) => {
-      if (message.conversationId === conversation?._id) {
-        setMessages((prevMessages) => [...prevMessages, message]);
-      }
+  
+    // ✅ All these are needed
+    socket.on("messageReacted", (updatedMsg: Message) => {
+      setMessages((prev) =>
+        prev.map((msg) => (msg._id === updatedMsg._id ? updatedMsg : msg))
+      );
     });
-
+  
     socket.on("messageEdited", (editedMessage: Message) => {
       setMessages((prevMessages) =>
         prevMessages.map((msg) => (msg._id === editedMessage._id ? editedMessage : msg))
       );
     });
-
+  
     socket.on("messageDeleted", ({ id }) => {
-      setMessages((prevMessages) => prevMessages.filter((msg) => msg._id !== id));
+      setMessages((prevMessages) =>
+        prevMessages.filter((msg) => msg._id !== id)
+      );
     });
-
+    socket.on("newMessage", (newMsg: Message) => {
+      // Only append if it belongs to the currently open conversation
+      if (newMsg.conversationId === conversation?._id) {
+        setMessages((prev) => [...prev, newMsg]);
+      }
+    });
+  
     return () => {
-      socket.off("newMessage");
+      socket.off("messageReacted");
       socket.off("messageEdited");
       socket.off("messageDeleted");
+      socket.off("newMessage"); // ✅ Cleanup the new listener too
+
     };
   }, [conversation]);
+  
 
   // ✅ Fetch messages from the backend
   const fetchMessages = async () => {
@@ -307,7 +367,7 @@ useEffect(() => {
       file: filePath,
       replyTo: replyTo?._id || null,
     };
-    
+
 
     if (!conversation?.isGroup) {
       messageData.receiver = otherParticipant?._id || otherParticipant?.id;
@@ -315,7 +375,7 @@ useEffect(() => {
     if (replyTo) {
       messageData.replyTo = replyTo._id;
     }
-    
+
     try {
       const response = await axios.post("http://localhost:5001/api/messages/send", messageData, {
         headers: {
@@ -323,7 +383,7 @@ useEffect(() => {
         },
       });
 
-      socket.emit("sendMessage", response.data);
+      // socket.emit("sendMessage", response.data);
 
       // ✅ DO NOT manually add to local state
       // setMessages((prevMessages) => [...prevMessages, response.data]); ❌
@@ -407,38 +467,36 @@ useEffect(() => {
           .map((message) => (
             <div
               key={message._id}
-              className={`flex ${
-                (message.sender?._id || message.sender?.id || message.sender) === currentUser.id
-                  ? 'justify-end'
-                  : 'justify-start'
-              }`}
-                            onMouseEnter={() => setHoveredMessageId(message._id)}
+              className={`flex ${(message.sender?._id || message.sender?.id || message.sender) === currentUser.id
+                ? 'justify-end'
+                : 'justify-start'
+                }`}
+              onMouseEnter={() => setHoveredMessageId(message._id)}
               onMouseLeave={() => setHoveredMessageId(null)}
             >
-{message.replyTo && (
-  <div className="text-xs text-gray-700 mb-1 p-2 border-l-4 border-indigo-400 bg-indigo-50 rounded">
-    <div className="font-medium">{message.replyTo.senderName || "Someone"}</div>
-    <div className="truncate max-w-xs">{message.replyTo.content || "Attachment"}</div>
-  </div>
-)}
+              {message.replyTo && (
+                <div className="text-xs text-gray-700 mb-1 p-2 border-l-4 border-indigo-400 bg-indigo-50 rounded">
+                  <div className="font-medium">{message.replyTo.senderName || "Someone"}</div>
+                  <div className="truncate max-w-xs">{message.replyTo.content || "Attachment"}</div>
+                </div>
+              )}
 
 
               {/* Message Bubble */}
-              <div className={`relative max-w-[75%] lg:max-w-[60%] p-3 rounded-lg ${
-  (message.sender?._id || message.sender?.id || message.sender) === currentUser.id
-    ? 'bg-indigo-600 text-white'
-    : 'bg-gray-100 text-gray-900'
-}`}>
+              <div className={`relative max-w-[75%] lg:max-w-[60%] p-3 rounded-lg ${(message.sender?._id || message.sender?.id || message.sender) === currentUser.id
+                ? 'bg-indigo-600 text-white'
+                : 'bg-gray-100 text-gray-900'
+                }`}>
 
 
                 {/* Sender Name (group only) */}
                 {conversation?.isGroup && (message.sender?._id || message.sender?.id) !== currentUser.id && (
-  <p className="text-xs font-semibold mb-1 opacity-75 text-gray-700">
-    {typeof message.sender === "object" && "name" in message.sender
-      ? message.sender.name
-      : "Unknown"}
-  </p>
-)}
+                  <p className="text-xs font-semibold mb-1 opacity-75 text-gray-700">
+                    {typeof message.sender === "object" && "name" in message.sender
+                      ? message.sender.name
+                      : "Unknown"}
+                  </p>
+                )}
 
 
                 {/* Message Content */}
@@ -492,31 +550,33 @@ useEffect(() => {
 
                 {/* Dropdown Menu */}
                 {dropdownFor === message._id && (
-                  <div
+                <div
                   ref={dropdownRef}
-                  className="absolute left-0 top-full mt-1 w-48 bg-white border rounded-lg shadow-lg z-[1000] text-sm text-gray-700 overflow-hidden"
+                  className={`absolute left-0 top-full mt-1 ${
+                    emojiPickerFor === message._id ? 'w-74' : 'w-48'
+                  } bg-white border rounded-lg shadow-lg z-[1000] text-sm text-gray-700 overflow-hidden`}
                 >
-                
-                  <button
-  onClick={() => setReplyTo(message)}
-  className="block w-full px-4 py-2 hover:bg-gray-100 text-left"
->
-  ↩️ Reply
-</button>
+
+                    <button
+                      onClick={() => setReplyTo(message)}
+                      className="block w-full px-4 py-2 hover:bg-gray-100 text-left"
+                    >
+                      ↩️ Reply
+                    </button>
                     <button onClick={() => navigator.clipboard.writeText(message.content)} className="block w-full px-4 py-2 hover:bg-gray-100 text-left">📋 Copy</button>
                     {message.sender !== currentUser.id && (
-  <button
-    onClick={() => onReplyPrivately(message)}
-    className="block w-full px-4 py-2 hover:bg-gray-100 text-left"
-  >
-    🙈 Reply Privately
-  </button>
-)}
-                  <button onClick={() => onForward(message)} className="block w-full px-4 py-2 hover:bg-gray-100 text-left">🔁 Forward</button>
+                      <button
+                        onClick={() => onReplyPrivately(message)}
+                        className="block w-full px-4 py-2 hover:bg-gray-100 text-left"
+                      >
+                        🙈 Reply Privately
+                      </button>
+                    )}
+                    <button onClick={() => onForward(message)} className="block w-full px-4 py-2 hover:bg-gray-100 text-left">🔁 Forward</button>
                     <button onClick={() => onStar(message)} className="block w-full px-4 py-2 hover:bg-gray-100 text-left">⭐ Star</button>
                     <button onClick={() => onPin(message)} className="block w-full px-4 py-2 hover:bg-gray-100 text-left">📌 Pin</button>
 
-                    {message.sender === currentUser.id ? (
+                    {(message.sender?._id || message.sender?.id || message.sender) === currentUser.id ? (
                       <>
                         <button
                           onClick={() => {
@@ -572,13 +632,21 @@ useEffect(() => {
                         >
                           <Smile className="w-4 h-4" />
                         </button>
-                      </div>
 
+                      </div>
+                      
                       {/* Emoji Picker */}
                       {emojiPickerFor === message._id && (
+                        
                         <div className="mt-2">
+                          <button
+        onClick={() => setEmojiPickerFor(null)}
+        className="text-gray-400 hover:text-gray-600 text-lg"
+      >
+        ✕
+      </button>
                           <EmojiPicker
-                            height={300}
+                            height={400}
                             width="100%"
                             onEmojiClick={(emojiObject) => {
                               handleReaction(message._id, emojiObject.emoji);
@@ -590,6 +658,64 @@ useEffect(() => {
                     </div>
                   </div>
                 )}
+                {message.reactions && message.reactions.length > 0 && (
+                  <div className="absolute -bottom-4 left-2 flex space-x-1 bg-white px-2 py-1 rounded-full shadow border z-10">
+                    {Array.from(new Set(message.reactions.map(r => r.emoji))).map((emoji) => (
+                      <div
+                        key={emoji}
+                        className="text-sm cursor-pointer hover:scale-110 transition"
+                        onClick={() => setReactionPopupFor(message._id)} // 👈
+                      >
+                        {emoji}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {reactionPopupFor === message._id && (
+                  <div     ref={reactionPopupRef} // ✅ Add this
+                  className="absolute -bottom-20 left-2 w-60 bg-white shadow-lg rounded-lg border p-3 z-20">
+                    <div className="text-sm font-medium border-b pb-1 mb-2">All Reactions</div>
+                    {message.reactions.map((r) => {
+                      const isYou = r.user === currentUser.id;
+                      const sender = conversation?.participants.find(
+                        (p) => (p._id || p.id) === r.user
+                      );
+
+                      return (
+                        <div
+                          key={r.user + r.emoji}
+                          className="flex justify-between items-center py-1 text-sm hover:bg-gray-50 px-2 rounded"
+                        >
+                          <div className="flex items-center space-x-2">
+                            <img
+                              src={
+                                sender?.avatar ||
+                                "https://ui-avatars.com/api/?name=" +
+                                encodeURIComponent(sender?.name || "User")
+                              }
+                              alt="avatar"
+                              className="w-6 h-6 rounded-full"
+                            />
+                            <span>{isYou ? "You" : sender?.name || "Unknown"}</span>
+                          </div>
+                          <div
+  className="cursor-pointer flex flex-col items-center"
+  onClick={() => isYou && handleReaction(message._id, r.emoji)}
+>
+  <span>{r.emoji}</span>
+  {isYou && (
+    <span className="text-[10px] text-gray-400 leading-none">select to remove</span>
+  )}
+</div>
+
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+
+
               </div>
             </div>
           ))}
@@ -616,27 +742,35 @@ useEffect(() => {
           </button>
         </div>
       )}
-{replyTo && (
-  <div className="bg-gray-100 border-l-4 border-indigo-500 p-2 mb-2 rounded relative">
-<p className="text-xs text-gray-500">
-  Replying to {replyTo.sender === currentUser.id ? "yourself" : replyTo.sender?.name || "Someone"}
-</p>
+      {replyTo && (
+        <div className="bg-gray-100 border-l-4 border-indigo-500 p-2 mb-2 rounded relative">
+          <p className="text-xs text-gray-500">
+            Replying to {replyTo.sender === currentUser.id ? "yourself" : replyTo.sender?.name || "Someone"}
+          </p>
 
-    <p className="text-sm italic text-gray-800 truncate">{replyTo.content}</p>
-    <button
-      onClick={() => setReplyTo(null)}
-      className="absolute top-1 right-2 text-gray-400 hover:text-red-500"
-    >
-      ✕
-    </button>
-  </div>
-)}
+          <p className="text-sm italic text-gray-800 truncate">{replyTo.content}</p>
+          <button
+            onClick={() => setReplyTo(null)}
+            className="absolute top-1 right-2 text-gray-400 hover:text-red-500"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Message Input */}
       <div className="p-4 border-t border-gray-200 bg-white flex items-center space-x-3">
         <button onClick={() => setShowEmojiPicker(!showEmojiPicker)}><Smile className="w-6 h-6 text-gray-500" /></button>
         {showEmojiPicker && (
           <div className="absolute bottom-16 left-4 z-10 bg-white shadow-lg p-2 rounded-lg">
+           <div className="flex justify-end mb-1">
+              <button
+                onClick={() => setShowEmojiPicker(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
             <EmojiPicker
               onEmojiClick={(emojiObject) => setNewMessage((prev) => prev + emojiObject.emoji)}
             />

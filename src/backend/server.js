@@ -13,12 +13,12 @@ import attachments from "./routes/attachments.js";
 import userRoutes from "./routes/userRoutes.js";
 import fileUpload from "express-fileupload";
 import resourceRoutes from "./routes/resourceRoutes.js";
-import messageRoutes from "./routes/messageRoutes.js" // ✅ Use .cjs for CommonJS files
+import messageRoutes from "./routes/messageRoutes.js";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import conversationRoutes from "./routes/conversations.js";
 
-// Import the announcement cleanup utility to toggle visibility of expired announcements
+// Import the announcement cleanup utility...
 import "./utils/announcementCleanup.js";
 
 dotenv.config();
@@ -50,10 +50,9 @@ app.use(
 );
 
 app.use(express.json());
-
-// Configure express-fileupload middleware
 app.use(fileUpload());
 
+// Mongoose + GridFS
 mongoose
   .connect("mongodb://localhost:27017/main_db", {
     useNewUrlParser: true,
@@ -82,28 +81,17 @@ app.use("/api/student", studentRoutes);
 app.use("/api/announcements", announcementsRouter);
 app.use("/api/users", userRoutes);
 app.use("/api/resources", resourceRoutes);
-app.use("/api/messages", messageRoutes); // ✅ Added messaging API
-
-// ✅ Use the new route
+app.use("/api/messages", messageRoutes);
 app.use("/api/conversations", conversationRoutes);
 
-// ✅ SOCKET.IO LOGIC
+// SOCKET.IO LOGIC
 io.on("connection", (socket) => {
   console.log("A user connected:", socket.id);
 
-  // Listen for joining a room (User joins their userId)
-  socket.on("join", (userId) => {
-    socket.join(userId);
-    console.log(`User ${userId} joined room ${userId}`);
-  });
-
-  // Listen for new messages and broadcast them
-  socket.on("sendMessage", (message) => {
-    const { sender, receiver, content } = message;
-    console.log("New message from:", sender, "to:", receiver);
-
-    // Emit the message to the receiver
-    io.to(receiver).emit("newMessage", message);
+  // Let clients join a room by conversation ID
+  socket.on("joinConversation", (conversationId) => {
+    socket.join(conversationId);
+    console.log(`Socket ${socket.id} joined conversation room ${conversationId}`);
   });
 
   socket.on("disconnect", () => {
