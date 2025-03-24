@@ -41,6 +41,8 @@ router.post("/send", authMiddleware, async (req, res) => {
 
     const newMessage = new Message(newMessageData);
     await newMessage.save();
+
+    // Populate sender + replyTo → sender
     await newMessage.populate([
       { path: "sender", select: "name email avatar" },
       {
@@ -51,6 +53,7 @@ router.post("/send", authMiddleware, async (req, res) => {
         },
       },
     ]);
+
     // 1) **Populate** the sender right away
     await newMessage.populate("sender", "name email avatar");
 
@@ -61,29 +64,26 @@ router.post("/send", authMiddleware, async (req, res) => {
       timestamp: newMessage.timestamp,
       _id: newMessage._id,
     };
-    await conversation.save();
+
+    // -- ADDED: Mark lastMessage as modified so updatedAt changes --
+    conversation.markModified("lastMessage");
+
     conversation.participants.forEach((participantId) => {
       if (participantId.toString() !== sender.toString()) {
         const prev = conversation.unreadCounts.get(participantId.toString()) || 0;
         conversation.unreadCounts.set(participantId.toString(), prev + 1);
       }
     });
-    conversation.participants.forEach((userId) => {
-      req.io.to(userId.toString()).emit("newMessage", newMessage);
-      req.io.to(userId.toString()).emit("conversationCreated", conversation);
-    });
-
-  
 
     await conversation.save();
 
-    // ✅ Existing: Emit to each participant's userId room
+    // Emit to each participant's userId room
     conversation.participants.forEach((userId) => {
       req.io.to(userId.toString()).emit("newMessage", newMessage);
       req.io.to(userId.toString()).emit("conversationCreated", conversation);
     });
 
-    // ✅ ADDED: Also emit to the conversation's own room
+    // Also emit to the conversation's own room
     req.io.to(conversation._id.toString()).emit("newMessage", newMessage);
     req.io.to(conversation._id.toString()).emit("conversationCreated", conversation);
 
@@ -99,15 +99,54 @@ router.get("/conversations", authMiddleware, async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // ✅ Get conversations where the user is a participant
+    // Find all conversations where the user is a participant
     const conversations = await Conversation.find({ participants: userId })
       .populate("participants", "name email role avatar")
+      .populate({
+        path: "lastMessage",
+        select: "content file timestamp sender isDeletedForEveryone readBy",
+        populate: {
+          path: "sender",
+          select: "name avatar email",
+        },
+      })
       .sort({ updatedAt: -1 });
 
-    res.json(conversations);
+    // Add unread count per conversation
+    const enrichedConversations = conversations.map((conv) => {
+      const unreadCount = conv.unreadCounts?.get?.(userId.toString()) || 0;
+    
+      return {
+        ...conv.toObject(),
+        unreadCount,
+      };
+    });
+  
+    res.json(enrichedConversations);
   } catch (error) {
     console.error("❌ Error fetching conversations:", error);
-    res.status(500).json({ error: "Fetching conversations failed" });
+    res.status(500).json({ error: "Failed to load conversations" });
+  }
+});
+router.get("/conversations/:id", authMiddleware, async (req, res) => {
+  try {
+    const conversation = await Conversation.findById(req.params.id)
+      .populate("participants", "name email avatar role")
+      .populate({
+        path: "lastMessage",
+        select: "content file timestamp sender isDeletedForEveryone",
+        populate: {
+          path: "sender",
+          select: "name avatar email",
+        },
+      });
+
+    if (!conversation) return res.status(404).json({ error: "Not found" });
+
+    res.json(conversation);
+  } catch (error) {
+    console.error("❌ Error fetching conversation:", error);
+    res.status(500).json({ error: "Failed to load conversation" });
   }
 });
 
@@ -190,12 +229,12 @@ router.post("/createGroup", authMiddleware, async (req, res) => {
     });
     await newConversation.save();
 
-    // ✅ Existing: Emit to each participant's userId room
+    // Emit to each participant's userId room
     newConversation.participants.forEach((userId) => {
       req.io.to(userId.toString()).emit("conversationCreated", newConversation);
     });
 
-    // ✅ ADDED: Also emit to the conversation's own room
+    // Also emit to the conversation's own room
     req.io.to(newConversation._id.toString()).emit("conversationCreated", newConversation);
 
     return res.status(201).json(newConversation);
@@ -204,6 +243,35 @@ router.post("/createGroup", authMiddleware, async (req, res) => {
     return res.status(500).json({ error: "Failed to create group" });
   }
 });
+router.put("/mark-read/:conversationId", authMiddleware, async (req, res) => {
+  const userId = req.user.id;
+  const { conversationId } = req.params;
+
+  try {
+    await Message.updateMany(
+      {
+        conversationId,
+        readBy: { $ne: userId },
+        isDeletedForEveryone: { $ne: true },
+        deletedBy: { $ne: userId }
+      },
+      { $addToSet: { readBy: userId } }
+    );
+
+    // Optionally, reset the unread count per user on conversation too
+    await Conversation.findByIdAndUpdate(conversationId, {
+      $set: { [`unreadCounts.${userId}`]: 0 }
+    });
+
+    req.io.to(userId).emit("markedAsRead", conversationId); // ✅ notify
+
+    res.status(200).json({ success: true });
+  } catch (err) {
+    console.error("❌ Failed to mark as read:", err);
+    res.status(500).json({ error: "Failed to mark messages as read" });
+  }
+});
+
 
 router.post("/find-or-create", authMiddleware, async (req, res) => {
   const userId = req.user.id;
@@ -234,31 +302,48 @@ router.put("/edit/:id", authMiddleware, async (req, res) => {
   try {
     const { content } = req.body;
 
-    const updatedMessage = await Message.findByIdAndUpdate(
-      req.params.id,
-      { content },
-      { new: true }
-    );
+    let message = await Message.findById(req.params.id);
+    if (!message) return res.status(404).json({ error: "Message not found" });
 
-    if (!updatedMessage) {
-      return res.status(404).json({ error: "Message not found" });
+    // Update text
+    message.content = content;
+    await message.save();
+
+    // **Populate** the sender so the client sees name/email:
+    await message.populate("sender", "name email avatar");
+
+    const conversation = await Conversation.findById(message.conversationId);
+    if (!conversation) {
+      return res.status(404).json({ error: "Conversation not found" });
     }
 
-    // Update lastMessage if needed
-    const conversation = await Conversation.findById(updatedMessage.conversationId);
+    // If the last message is the one we just edited, update it
     if (
-      conversation &&
       conversation.lastMessage &&
-      String(conversation.lastMessage._id || "") === String(updatedMessage._id)
+      String(conversation.lastMessage._id) === String(message._id)
     ) {
       conversation.lastMessage.content = content;
+
+      // -- ADDED: Mark lastMessage as modified so updatedAt changes --
+      conversation.markModified("lastMessage");
+
       await conversation.save();
+
+      // Broadcast the updated conversation
+      conversation.participants.forEach((uid) => {
+        req.io.to(uid.toString()).emit("conversationCreated", conversation);
+      });
+      req.io
+        .to(conversation._id.toString())
+        .emit("conversationCreated", conversation);
     }
 
-    // ✅ ADDED: Also emit "messageEdited" to the conversation's room
-    req.io.to(updatedMessage.conversationId.toString()).emit("messageEdited", updatedMessage);
+    // Also broadcast "messageEdited" so your front-end can do real-time changes
+    req.io
+      .to(conversation._id.toString())
+      .emit("messageEdited", message);
 
-    res.json(updatedMessage);
+    return res.json(message);
   } catch (error) {
     console.error("❌ Error editing message:", error);
     res.status(500).json({ error: "Message edit failed" });
@@ -314,10 +399,15 @@ router.put("/delete/:id", authMiddleware, async (req, res) => {
     const message = await Message.findById(req.params.id);
     if (!message) return res.status(404).json({ error: "Message not found" });
 
+    const conversation = await Conversation.findById(message.conversationId);
+    if (!conversation) return res.status(404).json({ error: "Conversation not found" });
+
+    // 1) Mark the message as deleted (for everyone or just you)
     if (forEveryone) {
-      // Only sender can delete for everyone
-      if (message.sender.toString() !== userId) {
-        return res.status(403).json({ error: "Only sender can delete for everyone." });
+      if (String(message.sender) !== userId) {
+        return res
+          .status(403)
+          .json({ error: "Only sender can delete for everyone." });
       }
       message.isDeletedForEveryone = true;
     } else {
@@ -328,14 +418,54 @@ router.put("/delete/:id", authMiddleware, async (req, res) => {
 
     await message.save();
 
-    // ✅ Already conversation-based
-    req.io.to(message.conversationId.toString()).emit("messageDeleted", {
+    // 2) If this message was the lastMessage, find the new last
+    const wasLastMessage =
+      conversation.lastMessage &&
+      String(conversation.lastMessage._id) === String(message._id);
+
+    if (wasLastMessage) {
+      // find the new most recent message that is not fully deleted
+      const [newLast] = await Message.find({
+        conversationId: conversation._id,
+        isDeletedForEveryone: { $ne: true },
+      })
+        .sort({ timestamp: -1 })
+        .limit(1);
+
+      if (newLast) {
+        conversation.lastMessage = {
+          _id: newLast._id,
+          content: newLast.file ? "📎 Sent an attachment" : newLast.content,
+          file: newLast.file || null,
+          timestamp: newLast.timestamp,
+        };
+      } else {
+        // no messages left
+        conversation.lastMessage = null;
+      }
+
+      // -- ADDED: Mark lastMessage as modified so updatedAt changes --
+      conversation.markModified("lastMessage");
+
+      await conversation.save();
+
+      // Broadcast the updated conversation so your conversation list re-renders
+      conversation.participants.forEach((uid) => {
+        req.io.to(uid.toString()).emit("conversationCreated", conversation);
+      });
+      req.io
+        .to(conversation._id.toString())
+        .emit("conversationCreated", conversation);
+    }
+
+    // 3) Emit "messageDeleted" so the front-end removes it in real-time
+    req.io.to(conversation._id.toString()).emit("messageDeleted", {
       id: message._id,
       forEveryone,
       userId,
     });
 
-    res.json({ message: "Message updated with delete status." });
+    return res.json({ message: "Message updated with delete status." });
   } catch (error) {
     console.error("❌ Error deleting message:", error);
     res.status(500).json({ error: "Delete failed" });

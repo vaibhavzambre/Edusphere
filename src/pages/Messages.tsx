@@ -19,7 +19,34 @@ export default function Messages() {
   // ✅ FLAG: to track if we just sent a message to create a new conversation
   const [wasNewConversationSent, setWasNewConversationSent] = useState(false);
   const [prefilledMessage, setPrefilledMessage] = useState<string>("");
-
+  const refetchSingleConversation = async (conversationId: string) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await axios.get(`http://localhost:5001/api/messages/conversations/${conversationId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+  
+      const updatedConversation = res.data;
+  
+      setConversations((prev) => {
+        const index = prev.findIndex((c) => c._id === conversationId);
+        if (index === -1) return prev;
+        const updated = [...prev];
+        updated[index] = updatedConversation;
+        return updated;
+      });
+  
+      if (
+        selectedConversation &&
+        (selectedConversation._id === conversationId || selectedConversation.id === conversationId)
+      ) {
+        setSelectedConversation(updatedConversation);
+      }
+    } catch (err) {
+      console.error("🔁 Failed to refetch conversation:", err);
+    }
+  };
+  
   // ✅ Fetch Conversations from API
   const fetchConversations = async (): Promise<Conversation[] | undefined> => {
     try {
@@ -49,69 +76,29 @@ export default function Messages() {
   useEffect(() => {
     fetchConversations();
     socket.emit("join", currentUser.id);
-
-    socket.on("newMessage", (message: Message) => {
-      console.log("🔄 New message via socket:", message);
-
-      // Refresh ChatWindow messages if applicable
-      if (message.conversationId === selectedConversation?._id || message.conversationId === selectedConversation?.id) {
-        setSelectedConversation((prev) => ({ ...prev } as Conversation));
-      }
-
-      fetchConversations(); // Always refresh for last message + unread count
+  
+    const refresh = () => fetchConversations();
+    socket.on("conversationUpdated", ({ conversationId }) => {
+      // Refresh just that conversation
+      refetchSingleConversation(conversationId);
     });
-
-    socket.on("conversationCreated", (newConv: Conversation) => {
-      const isParticipant = newConv.participants.some(
-        (p: any) => p._id === currentUser.id || p.id === currentUser.id
-      );
-
-      if (isParticipant) {
-        if (wasNewConversationSent) {
-          // ✅ Replace temporary conversation with the real one
-          setConversations((prev) => [newConv, ...prev]);
-          setSelectedConversation(newConv);
-          setWasNewConversationSent(false);
-        } else {
-          // ✅ Just add if not already there
-          setConversations((prev) => {
-            const exists = prev.some((c) => c._id === newConv._id);
-            return exists ? prev : [newConv, ...prev];
-          });
-        }
-      }
-    });
-    // ✅ Listen for the very first message when conversation didn't exist before
-    socket.on("firstMessage", (newConv: Conversation) => {
-      const isParticipant = newConv.participants.some(
-        (p: any) => p._id === currentUser.id || p.id === currentUser.id
-      );
-
-      if (isParticipant) {
-        setConversations((prev) => {
-          const exists = prev.some((c) => c._id === newConv._id || c.id === newConv.id);
-          if (!exists) {
-            return [newConv, ...prev];
-          }
-          return prev;
-        });
-
-        if (wasNewConversationSent) {
-          setSelectedConversation(newConv);
-          setWasNewConversationSent(false);
-        }
-      }
-    });
-
-
+    
+    socket.on("newMessage", refresh);
+    socket.on("messageEdited", refresh);
+    socket.on("messageDeleted", refresh);
+    socket.on("firstMessage", refresh);
+    socket.on("conversationCreated", refresh);
+  
     return () => {
-      socket.off("newMessage");
-      socket.off("firstMessage"); // ✅ Clean up new listener
-
-      socket.off("conversationCreated");
+      socket.off("newMessage", refresh);
+      socket.off("messageEdited", refresh);
+      socket.off("messageDeleted", refresh);
+      socket.off("firstMessage", refresh);
+      socket.off("conversationCreated", refresh);
     };
   }, [selectedConversation, wasNewConversationSent]);
-
+  
+  
   // ✅ Send Message
  const handleSendMessage = async (content: string) => {
   if (!selectedConversation || !content.trim()) return;
@@ -192,7 +179,9 @@ export default function Messages() {
   setSelectedConversation={setSelectedConversation}
   setPrefilledMessage={setPrefilledMessage}
   replyToMessage={replyToMessage}                     // ✅ NEW
-  setReplyToMessage={setReplyToMessage}               // ✅ NEW
+  setReplyToMessage={setReplyToMessage}  
+  fetchConversations={fetchConversations}  // ✅ NEW
+  // ✅ NEW
 />
 
 

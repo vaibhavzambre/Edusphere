@@ -10,7 +10,7 @@ const MessageSchema = new mongoose.Schema(
     read: { type: Boolean, default: false },
     // Message.js
     deletedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
-
+    readBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
 isDeletedForEveryone: { type: Boolean, default: false },
 replyTo: {
   type: mongoose.Schema.Types.ObjectId,

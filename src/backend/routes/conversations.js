@@ -12,8 +12,19 @@ router.get("/", authMiddleware, async (req, res) => {
 
     // Find all conversations where the user is a participant
     const conversations = await Conversation.find({ participants: userId })
-    .populate("participants", "name email role avatar")
-    .sort({ updatedAt: -1 });
+  .populate("participants", "name email role avatar")
+  .populate({
+    path: "lastMessage",
+    select: "content file timestamp sender isDeletedForEveryone",
+    populate: {
+      path: "sender",
+      select: "name avatar email",
+    },
+  })
+  .sort({ updatedAt: -1 });
+
+console.log("DEBUG SERVER: conversations ->", conversations);
+
   
 
     res.json(conversations);

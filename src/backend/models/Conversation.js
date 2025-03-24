@@ -1,27 +1,29 @@
-// models/Conversation.js
+// Conversation.js
 import mongoose from "mongoose";
+const ConversationSchema = new mongoose.Schema({
+  participants: [
+    { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+  ],
 
-const ConversationSchema = new mongoose.Schema(
-  {
-    participants: [
-      { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    ],
-    lastMessage: {
-      content: { type: String, default: "" },
-      timestamp: { type: Date, default: Date.now },
-    },
-    unreadCounts: {
-      type: Map,
-      of: Number,
-      default: {},
-    },
-
-    // Group-related fields
-    isGroup: { type: Boolean, default: false },
-    groupName: { type: String, default: "" },
-    groupAdmin: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+  // Instead of storing an object with `content` and `timestamp`,
+  // store a reference to the actual Message document:
+  lastMessage: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Message",
+    default: null,
   },
-  { timestamps: true }
-);
+
+  // Keep your unreadCounts, isGroup, groupName, etc.
+  unreadCounts: {
+    type: Map,
+    of: Number,
+    default: {},
+  },
+
+  isGroup: { type: Boolean, default: false },
+  groupName: { type: String, default: "" },
+  groupAdmin: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+},
+{ timestamps: true });
 
 export default mongoose.model("Conversation", ConversationSchema);

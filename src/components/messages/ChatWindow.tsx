@@ -16,6 +16,7 @@ import axios from "axios";
 import { useAuth } from "../../context/AuthContext";
 import EmojiPicker from "emoji-picker-react"; // ✅ Make sure this library is installed
 import type { Conversation, Message } from "../../types";
+import GroupInfoPanel from "./GroupInfoPanel"; // or correct path
 
 interface ChatWindowProps {
   conversation: Conversation | null;
@@ -26,6 +27,8 @@ interface ChatWindowProps {
   setPrefilledMessage: (msg: string) => void;
   replyToMessage?: Message | null;               // ✅ NEW
   setReplyToMessage?: (msg: Message | null) => void; // ✅ NEW
+  fetchConversations: () => void; // ✅ NEW
+
 }
 
 
@@ -39,7 +42,9 @@ export default function ChatWindow({
   setSelectedConversation,       // ✅ AND THIS
   setPrefilledMessage,
   replyToMessage,
-  setReplyToMessage            // ✅ AND THIS
+  setReplyToMessage,   
+  fetchConversations // ✅ NEW
+  // ✅ AND THIS
 }: ChatWindowProps) {
   const replyTo = replyToMessage;
   const setReplyTo = setReplyToMessage!;
@@ -62,10 +67,16 @@ export default function ChatWindow({
   const conversationId = conversation?._id || conversation?.id;
   const [reactionPopupFor, setReactionPopupFor] = useState<string | null>(null);
   const reactionPopupRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef<Message[]>([]);
+  const [showInfoPanel, setShowInfoPanel] = useState(false);
 
   const handleClearReply = () => {
     setReplyTo(null);
   };
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+  
 
   // 👇 ADD THIS RIGHT HERE
   const otherParticipant = !conversation?.isGroup
@@ -265,7 +276,18 @@ export default function ChatWindow({
       socket.emit("joinConversation", conversation._id);
     }
   }, [conversation?._id]);
+  const markAsRead = async (convId: string) => {
+    try {
+      const token = localStorage.getItem("token");
+      await axios.put(`http://localhost:5001/api/messages/mark-read/${convId}`, {}, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
   
+      socket.emit("markedAsRead", convId);
+    } catch (err) {
+      console.error("❌ Failed to mark as read:", err);
+    }
+  }
 
   useEffect(() => {
     if (conversation) {
@@ -277,26 +299,58 @@ export default function ChatWindow({
     // ✅ All these are needed
     socket.on("messageReacted", (updatedMsg: Message) => {
       setMessages((prev) =>
-        prev.map((msg) => (msg._id === updatedMsg._id ? updatedMsg : msg))
+        prev.map((msg) => {
+          if (msg._id === updatedMsg._id) {
+            // Re-attach full sender info if missing
+            if (typeof updatedMsg.sender === "string") {
+              const fullSender = conversation?.participants.find(
+                (p) => (p._id || p.id) === updatedMsg.sender
+              );
+              return { ...updatedMsg, sender: fullSender || updatedMsg.sender };
+            }
+            return updatedMsg;
+          }
+          return msg;
+        })
       );
+      fetchConversations();
+
     });
   
     socket.on("messageEdited", (editedMessage: Message) => {
       setMessages((prevMessages) =>
         prevMessages.map((msg) => (msg._id === editedMessage._id ? editedMessage : msg))
       );
+    
+      const latestMessages = messagesRef.current;
+      const isLast = latestMessages.length > 0 && latestMessages[latestMessages.length - 1]._id === editedMessage._id;
+      if (isLast) {
+        fetchConversations();
+      }
     });
+    
+    
   
     socket.on("messageDeleted", ({ id }) => {
       setMessages((prevMessages) =>
         prevMessages.filter((msg) => msg._id !== id)
       );
+    
+      const latestMessages = messagesRef.current;
+      const isLast = latestMessages.length > 0 && latestMessages[latestMessages.length - 1]._id === id;
+      if (isLast) {
+        fetchConversations();
+      }
     });
+    
+    
     socket.on("newMessage", (newMsg: Message) => {
       // Only append if it belongs to the currently open conversation
       if (newMsg.conversationId === conversation?._id) {
         setMessages((prev) => [...prev, newMsg]);
       }
+      fetchConversations();
+
     });
   
     return () => {
@@ -334,6 +388,7 @@ export default function ChatWindow({
       );
 
       setMessages(response.data);
+      
     } catch (error) {
       console.error("Error fetching messages:", error);
       setError("Failed to load messages.");
@@ -437,6 +492,7 @@ export default function ChatWindow({
         {conversation?.isGroup ? (
           <div className="w-10 h-10 rounded-full bg-indigo-200 flex items-center justify-center text-indigo-700 font-bold">
             {conversation.groupName?.charAt(0).toUpperCase() || "G"}
+            
           </div>
         ) : (
           <img
@@ -449,14 +505,35 @@ export default function ChatWindow({
           />
         )}
 
-        <h2 className="font-medium text-gray-900">
-          {conversation?.isGroup
-            ? conversation.groupName || "Unnamed Group"
-            : otherParticipant?.name || "Unknown"}
-        </h2>
+<h2
+  className={`font-medium text-gray-900 ${conversation?.isGroup ? 'cursor-pointer' : ''}`}
+  onClick={() => {
+    if (conversation?.isGroup) {
+      setShowInfoPanel(true);
+    }
+  }}
+>
+  {conversation?.isGroup
+    ? conversation.groupName || "Unnamed Group"
+    : otherParticipant?.name || "Unknown"}
+
+  {/* 👇 Only show this small text if it's a group */}
+  {conversation?.isGroup && (
+    <p className="text-xs text-gray-500">
+      Click for Group Info
+    </p>
+  )}
+</h2>
+
+
       </div>
 
-
+      {showInfoPanel && conversation?.isGroup && (
+        <GroupInfoPanel
+          conversation={conversation}
+          onClose={() => setShowInfoPanel(false)}
+        />
+      )}
       {/* Messages */}
 
       {/* Messages Container */}
@@ -540,22 +617,31 @@ export default function ChatWindow({
 
                 {/* Dropdown Trigger */}
                 {hoveredMessageId === message._id && (
-                  <button
-                    onClick={() => setDropdownFor(message._id)}
-                    className="absolute -bottom-3 right-2 bg-white rounded-full shadow-sm p-1 hover:bg-gray-50 border border-gray-200"
-                  >
-                    <MoreVertical className="w-4 h-4 text-gray-600" />
-                  </button>
+                 <button
+                 onClick={() => setDropdownFor(message._id)}
+                 className={`absolute -bottom-3 ${
+                   (message.sender?._id || message.sender?.id || message.sender) === currentUser.id
+                     ? 'left-2'   // You sent the message → show button on left
+                     : 'right-2'  // They sent the message → show button on right
+                 } bg-white rounded-full shadow-sm p-1 hover:bg-gray-50 border border-gray-200`}
+               >
+                 <MoreVertical className="w-4 h-4 text-gray-600" />
+               </button>
+               
                 )}
 
                 {/* Dropdown Menu */}
                 {dropdownFor === message._id && (
                 <div
-                  ref={dropdownRef}
-                  className={`absolute left-0 top-full mt-1 ${
-                    emojiPickerFor === message._id ? 'w-74' : 'w-48'
-                  } bg-white border rounded-lg shadow-lg z-[1000] text-sm text-gray-700 overflow-hidden`}
-                >
+                ref={dropdownRef}
+                className={`absolute top-full mt-1 ${
+                  (message.sender?._id || message.sender?.id || message.sender) === currentUser.id
+                    ? 'right-0'   // for messages sent by you (right side)
+                    : 'left-0'    // for others (left side)
+                } ${emojiPickerFor === message._id ? 'w-74' : 'w-48'}
+                  bg-white border rounded-lg shadow-lg z-[1000] text-sm text-gray-700 overflow-hidden`}
+              >
+              
 
                     <button
                       onClick={() => setReplyTo(message)}
