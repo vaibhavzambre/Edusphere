@@ -19,7 +19,12 @@ const ConversationSchema = new mongoose.Schema({
     of: Number,
     default: {},
   },
-
+  pinnedMessage: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Message",
+    default: null,
+  },  
+  
   isGroup: { type: Boolean, default: false },
   groupName: { type: String, default: "" },
   groupAdmin: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },

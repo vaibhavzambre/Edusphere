@@ -10,7 +10,7 @@ import {
   Video,
   MoreVertical
 } from "lucide-react"; // 🧠 Added `MoreVertical` for the dropdown arrow
-
+import ForwardModal from "./ForwardModal";
 import io from "socket.io-client";
 import axios from "axios";
 import { useAuth } from "../../context/AuthContext";
@@ -42,7 +42,7 @@ export default function ChatWindow({
   setSelectedConversation,       // ✅ AND THIS
   setPrefilledMessage,
   replyToMessage,
-  setReplyToMessage,   
+  setReplyToMessage,
   fetchConversations // ✅ NEW
   // ✅ AND THIS
 }: ChatWindowProps) {
@@ -69,6 +69,44 @@ export default function ChatWindow({
   const reactionPopupRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<Message[]>([]);
   const [showInfoPanel, setShowInfoPanel] = useState(false);
+  // Add these at the top of ChatWindow function
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const unreadMessageRef = useRef<HTMLDivElement>(null);
+  const [firstUnreadMessageIndex, setFirstUnreadMessageIndex] = useState<number | null>(null);
+  const lastMessageRef = useRef<HTMLDivElement>(null);
+  
+  const [pinnedMessage, setPinnedMessage] = useState<Message | null>(null);
+  const pinnedMessageRef = useRef<HTMLDivElement>(null);
+  const [showCopiedToast, setShowCopiedToast] = useState(false);
+
+  //states for forward modal 
+  const [showForwardModal, setShowForwardModal] = useState(false);
+const [forwardMessage, setForwardMessage] = useState<Message | null>(null);
+const [allConversations, setAllConversations] = useState<Conversation[]>([]);
+const [selectedForwardConversationIds, setSelectedForwardConversationIds] = useState<string[]>([]);
+const [messageToForward, setMessageToForward] = useState<Message | null>(null);
+
+//for delete confirmation
+const [deleteModal, setDeleteModal] = useState<{
+  messageId: string;
+  forEveryone: boolean;
+} | null>(null);
+
+  useEffect(() => {
+    if (!loading && messages.length > 0) {
+      if (firstUnreadMessageIndex !== null) {
+        unreadMessageRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      } else {
+        setTimeout(() => {
+          lastMessageRef.current?.scrollIntoView({ behavior: "smooth" });
+        }, 100);
+      }
+    }
+  }, [loading, messages, firstUnreadMessageIndex]);
+  
 
   const handleClearReply = () => {
     setReplyTo(null);
@@ -76,7 +114,7 @@ export default function ChatWindow({
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
-  
+
 
   // 👇 ADD THIS RIGHT HERE
   const otherParticipant = !conversation?.isGroup
@@ -167,18 +205,87 @@ export default function ChatWindow({
     };
   }, []);
 
-
-  const onForward = (message: Message) => {
-    console.log("Forward message:", message.content);
+  const handleForward = async () => {
+    if (!forwardMessage || selectedForwardConversationIds.length === 0) return;
+  
+    try {
+      const token = localStorage.getItem("token");
+  
+      for (const convoId of selectedForwardConversationIds) {
+        const payload: any = {
+          conversationId: convoId,
+          content: forwardMessage.content,
+          file: forwardMessage.file,
+        };
+  
+        const convo = allConversations.find(c => c._id === convoId);
+        if (convo && !convo.isGroup) {
+          const receiver = convo.participants.find(p =>
+            (p._id || p.id) !== currentUser.id
+          );
+          if (receiver) {
+            payload.receiver = receiver._id || receiver.id;
+          }
+        }
+  
+        await axios.post("http://localhost:5001/api/messages/send", payload, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      }
+  
+      setShowForwardModal(false);
+      setSelectedForwardConversationIds([]);
+      setForwardMessage(null);
+    } catch (err) {
+      console.error("❌ Failed to forward message:", err);
+    }
   };
+  
+  const onForward = async (message: Message) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await axios.get("http://localhost:5001/api/messages/conversations", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+  
+      setAllConversations(res.data);
+      setForwardMessage(message);
+      setShowForwardModal(true);
+    } catch (err) {
+      console.error("❌ Failed to load conversations for forwarding:", err);
+    }
+  };
+  
 
   const onStar = (message: Message) => {
     console.log("Star message:", message.content);
   };
 
-  const onPin = (message: Message) => {
-    console.log("Pin message:", message.content);
+  const onPin = async (message: Message) => {
+    try {
+      await axios.put(`http://localhost:5001/api/messages/pin/${conversation._id}`, {
+        messageId: message._id,
+      }, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      socket.emit("pinnedMessageUpdated", message);
+      setPinnedMessage(message);
+    } catch (err) {
+      console.error("❌ Failed to pin:", err);
+    }
   };
+  const onUnpin = async () => {
+    try {
+      await axios.put(`http://localhost:5001/api/messages/unpin/${conversation._id}`, {}, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      socket.emit("pinnedMessageUpdated", null);
+      setPinnedMessage(null);
+    } catch (err) {
+      console.error("❌ Failed to unpin:", err);
+    }
+  };
+  
 
   const onSelect = (message: Message) => {
     console.log("Selected message:", message.content);
@@ -282,7 +389,7 @@ export default function ChatWindow({
       await axios.put(`http://localhost:5001/api/messages/mark-read/${convId}`, {}, {
         headers: { Authorization: `Bearer ${token}` },
       });
-  
+
       socket.emit("markedAsRead", convId);
     } catch (err) {
       console.error("❌ Failed to mark as read:", err);
@@ -295,7 +402,7 @@ export default function ChatWindow({
       socket.emit("join", currentUser.id);
       socket.emit("joinConversation", conversation._id);
     }
-  
+
     // ✅ All these are needed
     socket.on("messageReacted", (updatedMsg: Message) => {
       setMessages((prev) =>
@@ -316,43 +423,44 @@ export default function ChatWindow({
       fetchConversations();
 
     });
-  
+
     socket.on("messageEdited", (editedMessage: Message) => {
       setMessages((prevMessages) =>
         prevMessages.map((msg) => (msg._id === editedMessage._id ? editedMessage : msg))
       );
-    
+
       const latestMessages = messagesRef.current;
       const isLast = latestMessages.length > 0 && latestMessages[latestMessages.length - 1]._id === editedMessage._id;
       if (isLast) {
         fetchConversations();
       }
     });
-    
-    
-  
+
+
+
     socket.on("messageDeleted", ({ id }) => {
       setMessages((prevMessages) =>
         prevMessages.filter((msg) => msg._id !== id)
       );
-    
+
       const latestMessages = messagesRef.current;
       const isLast = latestMessages.length > 0 && latestMessages[latestMessages.length - 1]._id === id;
       if (isLast) {
         fetchConversations();
       }
     });
-    
-    
+
+    socket.on("pinnedMessageUpdated", (msg) => setPinnedMessage(msg));
+
     socket.on("newMessage", (newMsg: Message) => {
       // Only append if it belongs to the currently open conversation
       if (newMsg.conversationId === conversation?._id) {
         setMessages((prev) => [...prev, newMsg]);
       }
       fetchConversations();
-
+      fetchPinnedMessage();
     });
-  
+
     return () => {
       socket.off("messageReacted");
       socket.off("messageEdited");
@@ -361,7 +469,7 @@ export default function ChatWindow({
 
     };
   }, [conversation]);
-  
+
 
   // ✅ Fetch messages from the backend
   const fetchMessages = async () => {
@@ -388,7 +496,12 @@ export default function ChatWindow({
       );
 
       setMessages(response.data);
-      
+      // After setMessages(response.data);
+      const firstUnreadIndex = response.data.findIndex(
+        (msg: Message) => !msg.readBy?.includes(currentUser.id)
+      );
+      setFirstUnreadMessageIndex(firstUnreadIndex); // <- create this state
+
     } catch (error) {
       console.error("Error fetching messages:", error);
       setError("Failed to load messages.");
@@ -396,7 +509,16 @@ export default function ChatWindow({
       setLoading(false);
     }
   };
-
+  const fetchPinnedMessage = async () => {
+    if (!conversation?._id) return;
+  
+    const res = await axios.get(`http://localhost:5001/api/messages/pinned/${conversation._id}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  
+    setPinnedMessage(res.data); // can be null or a message
+  };
+  
   // ✅ Handle sending messages & files
   const handleSend = async () => {
     if (editingMessage) {
@@ -485,14 +607,15 @@ export default function ChatWindow({
 
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-gray-50">
+<div className="flex-1 flex flex-col h-full bg-gray-50 max-w-full overflow-hidden">
+{/* Chat Header */}
       {/* Chat Header */}
-      {/* Chat Header */}
+
       <div className="p-4 border-b border-gray-200 bg-white flex items-center space-x-3">
         {conversation?.isGroup ? (
           <div className="w-10 h-10 rounded-full bg-indigo-200 flex items-center justify-center text-indigo-700 font-bold">
             {conversation.groupName?.charAt(0).toUpperCase() || "G"}
-            
+
           </div>
         ) : (
           <img
@@ -505,25 +628,25 @@ export default function ChatWindow({
           />
         )}
 
-<h2
-  className={`font-medium text-gray-900 ${conversation?.isGroup ? 'cursor-pointer' : ''}`}
-  onClick={() => {
-    if (conversation?.isGroup) {
-      setShowInfoPanel(true);
-    }
-  }}
->
-  {conversation?.isGroup
-    ? conversation.groupName || "Unnamed Group"
-    : otherParticipant?.name || "Unknown"}
+        <h2
+          className={`font-medium text-gray-900 ${conversation?.isGroup ? 'cursor-pointer' : ''}`}
+          onClick={() => {
+            if (conversation?.isGroup) {
+              setShowInfoPanel(true);
+            }
+          }}
+        >
+          {conversation?.isGroup
+            ? conversation.groupName || "Unnamed Group"
+            : otherParticipant?.name || "Unknown"}
 
-  {/* 👇 Only show this small text if it's a group */}
-  {conversation?.isGroup && (
-    <p className="text-xs text-gray-500">
-      Click for Group Info
-    </p>
-  )}
-</h2>
+          {/* 👇 Only show this small text if it's a group */}
+          {conversation?.isGroup && (
+            <p className="text-xs text-gray-500">
+              Click for Group Info
+            </p>
+          )}
+        </h2>
 
 
       </div>
@@ -538,273 +661,346 @@ export default function ChatWindow({
 
       {/* Messages Container */}
       {/* Messages Container */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {messages
-          .filter((message) => !message.deletedBy?.includes(currentUser.id))
-          .map((message) => (
-            <div
-              key={message._id}
-              className={`flex ${(message.sender?._id || message.sender?.id || message.sender) === currentUser.id
-                ? 'justify-end'
-                : 'justify-start'
-                }`}
-              onMouseEnter={() => setHoveredMessageId(message._id)}
-              onMouseLeave={() => setHoveredMessageId(null)}
-            >
-              {message.replyTo && (
-                <div className="text-xs text-gray-700 mb-1 p-2 border-l-4 border-indigo-400 bg-indigo-50 rounded">
-                  <div className="font-medium">{message.replyTo.senderName || "Someone"}</div>
-                  <div className="truncate max-w-xs">{message.replyTo.content || "Attachment"}</div>
-                </div>
-              )}
+      {pinnedMessage && (
+  <div
+    onClick={() => {
+      const el = document.getElementById(`msg-${pinnedMessage._id}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.remove('animate-ping-highlight');
+        void el.offsetWidth;
+        el.classList.add('animate-ping-highlight');
+      }
+    }}
+    className="cursor-pointer bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 text-sm flex justify-between items-center"
+  >
+    <div className="truncate max-w-[80%]">
+      📌 Pinned: <span className="font-medium">{pinnedMessage.content || "Attachment"}</span>
+    </div>
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        onUnpin();
+      }}
+      className="text-xs text-red-600 hover:underline ml-2"
+    >
+      Unpin
+    </button>
+  </div>
+)}
 
 
-              {/* Message Bubble */}
-              <div className={`relative max-w-[75%] lg:max-w-[60%] p-3 rounded-lg ${(message.sender?._id || message.sender?.id || message.sender) === currentUser.id
-                ? 'bg-indigo-600 text-white'
-                : 'bg-gray-100 text-gray-900'
-                }`}>
+      <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-3" ref={scrollContainerRef}>
+      {messages
+  .filter((message) => !message.deletedBy?.includes(currentUser.id))
+  .map((message, index) => {
 
+            const isLast = index === messages.length - 1;
+            return (
 
-                {/* Sender Name (group only) */}
-                {conversation?.isGroup && (message.sender?._id || message.sender?.id) !== currentUser.id && (
-                  <p className="text-xs font-semibold mb-1 opacity-75 text-gray-700">
-                    {typeof message.sender === "object" && "name" in message.sender
-                      ? message.sender.name
-                      : "Unknown"}
-                  </p>
+<div
+  key={message._id}
+  id={`msg-${message._id}`}
+  ref={pinnedMessage?._id === message._id ? pinnedMessageRef : null}
+  className={`flex ${
+    (message.sender?._id || message.sender?.id || message.sender) === currentUser.id
+      ? 'justify-end'
+      : 'justify-start'
+  } w-full max-w-full px-4 min-w-0 ${
+    pinnedMessage?._id === message._id ? 'animate-ping-highlight' : ''
+  }`}
+  onMouseEnter={() => setHoveredMessageId(message._id)}
+  onMouseLeave={() => setHoveredMessageId(null)}
+>
+
+                {message.replyTo && (
+                  <div className="text-xs text-gray-700 mb-1 p-2 border-l-4 border-indigo-400 bg-indigo-50 rounded">
+                    <div className="font-medium">{message.replyTo.senderName || "Someone"}</div>
+                    <div className="truncate max-w-xs">{message.replyTo.content || "Attachment"}</div>
+                  </div>
                 )}
 
 
-                {/* Message Content */}
-                {message.file ? (
-                  message.file.match(/\.(jpg|jpeg|png|gif)$/i) ? (
-                    <img
-                      src={`http://localhost:5001/api/attachments/${message.file}`}
-                      alt="Sent file"
-                      className="max-w-full rounded-md max-h-64 object-cover"
-                    />
-                  ) : message.file.match(/\.(mp4|mov|avi)$/i) ? (
-                    <video
-                      controls
-                      className="max-w-full rounded-md max-h-64"
-                    >
-                      <source src={`http://localhost:5001/api/attachments/${message.file}`} />
-                    </video>
+                {/* Message Bubble */}
+                <div 
+  className={`relative max-w-[min(85%,_500px)] p-3 rounded-lg ${
+    (message.sender?._id || message.sender?.id || message.sender) === currentUser.id
+      ? 'bg-indigo-600 text-white'
+      : 'bg-gray-100 text-gray-900'
+  }`}>
+
+
+
+                  {/* Sender Name (group only) */}
+                  {conversation?.isGroup && (message.sender?._id || message.sender?.id) !== currentUser.id && (
+                    <p className="text-xs font-semibold mb-1 opacity-75 text-gray-700">
+                      {typeof message.sender === "object" && "name" in message.sender
+                        ? message.sender.name
+                        : "Unknown"}
+                    </p>
+                  )}
+
+
+                  {/* Message Content */}
+                  {message.file ? (
+                    message.file.match(/\.(jpg|jpeg|png|gif)$/i) ? (
+                      <img
+                        src={`http://localhost:5001/api/attachments/${message.file}`}
+                        alt="Sent file"
+                        className="max-w-full rounded-md max-h-64 object-cover"
+                      />
+                    ) : message.file.match(/\.(mp4|mov|avi)$/i) ? (
+                      <video
+                        controls
+                        className="max-w-full rounded-md max-h-64"
+                      >
+                        <source src={`http://localhost:5001/api/attachments/${message.file}`} />
+                      </video>
+                    ) : (
+                      <a
+                        href={`http://localhost:5001/api/attachments/${message.file}`}
+                        className="flex items-center space-x-2 text-blue-300 hover:text-blue-400"
+                        download
+                      >
+                        <FileText className="w-5 h-5" />
+                        <span>Download File</span>
+                      </a>
+                    )
                   ) : (
-                    <a
-                      href={`http://localhost:5001/api/attachments/${message.file}`}
-                      className="flex items-center space-x-2 text-blue-300 hover:text-blue-400"
-                      download
-                    >
-                      <FileText className="w-5 h-5" />
-                      <span>Download File</span>
-                    </a>
-                  )
-                ) : (
-                  <p className="break-words whitespace-pre-wrap">{message.content}</p>
-                )}
+<p className="break-words whitespace-pre-wrap overflow-x-hidden text-left max-w-full">
+  {message.content}
+</p>
+                  )}
 
-                {/* Timestamp */}
-                <div className="flex items-center justify-end gap-2 mt-2">
-                  <span className="text-xs opacity-75">
-                    {new Date(message.timestamp).toLocaleTimeString([], {
-                      hour: 'numeric',
-                      minute: '2-digit'
-                    })}
-                  </span>
-                </div>
+                  {/* Timestamp */}
+                  <div className="flex items-center justify-end gap-2 mt-2">
+                    <span className="text-xs opacity-75">
+                      {new Date(message.timestamp).toLocaleTimeString([], {
+                        hour: 'numeric',
+                        minute: '2-digit'
+                      })}
+                    </span>
+                  </div>
 
-                {/* Dropdown Trigger */}
-                {hoveredMessageId === message._id && (
-                 <button
-                 onClick={() => setDropdownFor(message._id)}
-                 className={`absolute -bottom-3 ${
-                   (message.sender?._id || message.sender?.id || message.sender) === currentUser.id
-                     ? 'left-2'   // You sent the message → show button on left
-                     : 'right-2'  // They sent the message → show button on right
-                 } bg-white rounded-full shadow-sm p-1 hover:bg-gray-50 border border-gray-200`}
-               >
-                 <MoreVertical className="w-4 h-4 text-gray-600" />
-               </button>
-               
-                )}
-
-                {/* Dropdown Menu */}
-                {dropdownFor === message._id && (
-                <div
-                ref={dropdownRef}
-                className={`absolute top-full mt-1 ${
-                  (message.sender?._id || message.sender?.id || message.sender) === currentUser.id
-                    ? 'right-0'   // for messages sent by you (right side)
-                    : 'left-0'    // for others (left side)
-                } ${emojiPickerFor === message._id ? 'w-74' : 'w-48'}
-                  bg-white border rounded-lg shadow-lg z-[1000] text-sm text-gray-700 overflow-hidden`}
-              >
-              
-
+                  {/* Dropdown Trigger */}
+                  {hoveredMessageId === message._id && (
                     <button
-                      onClick={() => setReplyTo(message)}
-                      className="block w-full px-4 py-2 hover:bg-gray-100 text-left"
+                      onClick={() => setDropdownFor(message._id)}
+                      className={`absolute -bottom-3 ${(message.sender?._id || message.sender?.id || message.sender) === currentUser.id
+                          ? 'left-2'   // You sent the message → show button on left
+                          : 'right-2'  // They sent the message → show button on right
+                        } bg-white rounded-full shadow-sm p-1 hover:bg-gray-50 border border-gray-200`}
                     >
-                      ↩️ Reply
+                      <MoreVertical className="w-4 h-4 text-gray-600" />
                     </button>
-                    <button onClick={() => navigator.clipboard.writeText(message.content)} className="block w-full px-4 py-2 hover:bg-gray-100 text-left">📋 Copy</button>
-                    {message.sender !== currentUser.id && (
+
+                  )}
+
+                  {/* Dropdown Menu */}
+                  {dropdownFor === message._id && (
+                    <div
+                      ref={dropdownRef}
+                      className={`absolute top-full mt-1 ${(message.sender?._id || message.sender?.id || message.sender) === currentUser.id
+                          ? 'right-0'   // for messages sent by you (right side)
+                          : 'left-0'    // for others (left side)
+                        } ${emojiPickerFor === message._id ? 'w-74' : 'w-48'}
+                  bg-white border rounded-lg shadow-lg z-[1000] text-sm text-gray-700 overflow-hidden`}
+                    >
+
+
                       <button
-                        onClick={() => onReplyPrivately(message)}
+                        onClick={() => setReplyTo(message)}
                         className="block w-full px-4 py-2 hover:bg-gray-100 text-left"
                       >
-                        🙈 Reply Privately
+                        ↩️ Reply
                       </button>
-                    )}
-                    <button onClick={() => onForward(message)} className="block w-full px-4 py-2 hover:bg-gray-100 text-left">🔁 Forward</button>
-                    <button onClick={() => onStar(message)} className="block w-full px-4 py-2 hover:bg-gray-100 text-left">⭐ Star</button>
-                    <button onClick={() => onPin(message)} className="block w-full px-4 py-2 hover:bg-gray-100 text-left">📌 Pin</button>
-
-                    {(message.sender?._id || message.sender?.id || message.sender) === currentUser.id ? (
-                      <>
+                      <button
+  onClick={() => {
+    navigator.clipboard.writeText(message.content);
+    setShowCopiedToast(true);
+    setTimeout(() => setShowCopiedToast(false), 1500); // Hide after 1.5s
+  }}
+  className="block w-full px-4 py-2 hover:bg-gray-100 text-left"
+>
+  📋 Copy
+</button>
+                      {message.sender !== currentUser.id && (
                         <button
-                          onClick={() => {
-                            setEditingMessage(message);
-                            setNewMessage(message.content); // Prefill input
-                          }}
+                          onClick={() => onReplyPrivately(message)}
                           className="block w-full px-4 py-2 hover:bg-gray-100 text-left"
                         >
-                          ✏️ Edit
+                          🙈 Reply Privately
                         </button>
+                      )}
+<button
+  onClick={() => {
+    setShowForwardModal(true);
+    setMessageToForward(message);
+  }}
+  className="block w-full px-4 py-2 hover:bg-gray-100 text-left"
+>
+  🔁 Forward
+</button>                      {showForwardModal && messageToForward && (
+  <ForwardModal
+  messageContent={messageToForward.content}
+  currentUser={currentUser}
+  onClose={() => {
+    setShowForwardModal(false);
+    setMessageToForward(null);
+  }}
+  setSelectedConversation={setSelectedConversation}
+/>
 
+)}
+
+                      <button onClick={() => onStar(message)} className="block w-full px-4 py-2 hover:bg-gray-100 text-left">⭐ Star</button>
+                      <button onClick={() => onPin(message)} className="block w-full px-4 py-2 hover:bg-gray-100 text-left">📌 Pin</button>
+
+                      {(message.sender?._id || message.sender?.id || message.sender) === currentUser.id ? (
+                        <>
+                          <button
+                            onClick={() => {
+                              setEditingMessage(message);
+                              setNewMessage(message.content); // Prefill input
+                            }}
+                            className="block w-full px-4 py-2 hover:bg-gray-100 text-left"
+                          >
+                            ✏️ Edit
+                          </button>
+
+                          <button
+onClick={() => setDeleteModal({ messageId: message._id, forEveryone: true })}
+className="block w-full px-4 py-2 hover:bg-gray-100 text-left text-red-500"
+                          >
+                            🗑️ Delete for Everyone
+                          </button>
+                          <button
+  onClick={() => setDeleteModal({ messageId: message._id, forEveryone: false })}
+  className="block w-full px-4 py-2 hover:bg-gray-100 text-left text-red-500"
+>
+  🗑️ Delete for Me
+</button>
+
+                        </>
+                      ) : (
                         <button
-                          onClick={() => handleDeleteMessage(message._id, true)}
-                          className="block w-full px-4 py-2 hover:bg-gray-100 text-left text-red-500"
-                        >
-                          🗑️ Delete for Everyone
-                        </button>
-                        <button
-                          onClick={() => handleDeleteMessage(message._id, false)}
-                          className="block w-full px-4 py-2 hover:bg-gray-100 text-left text-red-500"
+                        onClick={() => setDeleteModal({ messageId: message._id, forEveryone: false })}
+                        className="block w-full px-4 py-2 hover:bg-gray-100 text-left text-red-500"
                         >
                           🗑️ Delete for Me
                         </button>
-                      </>
-                    ) : (
-                      <button
-                        onClick={() => handleDeleteMessage(message._id, false)}
-                        className="block w-full px-4 py-2 hover:bg-gray-100 text-left text-red-500"
-                      >
-                        🗑️ Delete for Me
-                      </button>
-                    )}
-
-
-                    <button onClick={() => onSelect(message)} className="block w-full px-4 py-2 hover:bg-gray-100 text-left">✅ Select</button>
-                    <button onClick={() => onShare(message)} className="block w-full px-4 py-2 hover:bg-gray-100 text-left">📤 Share</button>
-
-                    {/* Emoji Reactions */}
-                    <div className="px-3 py-2 border-t">
-                      <div className="flex justify-between items-center">
-                        {['👍', '❤️', '😂', '😮', '😢', '🙏'].map((emoji) => (
-                          <button
-                            key={emoji}
-                            className="hover:scale-110 transition-transform"
-                            onClick={() => handleReaction(message._id, emoji)}
-                          >
-                            {emoji}
-                          </button>
-                        ))}
-                        <button
-                          onClick={() => setEmojiPickerFor(message._id)}
-                          className="text-gray-500 hover:text-indigo-600"
-                        >
-                          <Smile className="w-4 h-4" />
-                        </button>
-
-                      </div>
-                      
-                      {/* Emoji Picker */}
-                      {emojiPickerFor === message._id && (
-                        
-                        <div className="mt-2">
-                          <button
-        onClick={() => setEmojiPickerFor(null)}
-        className="text-gray-400 hover:text-gray-600 text-lg"
-      >
-        ✕
-      </button>
-                          <EmojiPicker
-                            height={400}
-                            width="100%"
-                            onEmojiClick={(emojiObject) => {
-                              handleReaction(message._id, emojiObject.emoji);
-                              setEmojiPickerFor(null);
-                            }}
-                          />
-                        </div>
                       )}
-                    </div>
-                  </div>
-                )}
-                {message.reactions && message.reactions.length > 0 && (
-                  <div className="absolute -bottom-4 left-2 flex space-x-1 bg-white px-2 py-1 rounded-full shadow border z-10">
-                    {Array.from(new Set(message.reactions.map(r => r.emoji))).map((emoji) => (
-                      <div
-                        key={emoji}
-                        className="text-sm cursor-pointer hover:scale-110 transition"
-                        onClick={() => setReactionPopupFor(message._id)} // 👈
-                      >
-                        {emoji}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {reactionPopupFor === message._id && (
-                  <div     ref={reactionPopupRef} // ✅ Add this
-                  className="absolute -bottom-20 left-2 w-60 bg-white shadow-lg rounded-lg border p-3 z-20">
-                    <div className="text-sm font-medium border-b pb-1 mb-2">All Reactions</div>
-                    {message.reactions.map((r) => {
-                      const isYou = r.user === currentUser.id;
-                      const sender = conversation?.participants.find(
-                        (p) => (p._id || p.id) === r.user
-                      );
 
-                      return (
-                        <div
-                          key={r.user + r.emoji}
-                          className="flex justify-between items-center py-1 text-sm hover:bg-gray-50 px-2 rounded"
-                        >
-                          <div className="flex items-center space-x-2">
-                            <img
-                              src={
-                                sender?.avatar ||
-                                "https://ui-avatars.com/api/?name=" +
-                                encodeURIComponent(sender?.name || "User")
-                              }
-                              alt="avatar"
-                              className="w-6 h-6 rounded-full"
-                            />
-                            <span>{isYou ? "You" : sender?.name || "Unknown"}</span>
-                          </div>
-                          <div
-  className="cursor-pointer flex flex-col items-center"
-  onClick={() => isYou && handleReaction(message._id, r.emoji)}
->
-  <span>{r.emoji}</span>
-  {isYou && (
-    <span className="text-[10px] text-gray-400 leading-none">select to remove</span>
-  )}
-</div>
+
+                      <button onClick={() => onSelect(message)} className="block w-full px-4 py-2 hover:bg-gray-100 text-left">✅ Select</button>
+                      <button onClick={() => onShare(message)} className="block w-full px-4 py-2 hover:bg-gray-100 text-left">📤 Share</button>
+
+                      {/* Emoji Reactions */}
+                      <div className="px-3 py-2 border-t">
+                        <div className="flex justify-between items-center">
+                          {['👍', '❤️', '😂', '😮', '😢', '🙏'].map((emoji) => (
+                            <button
+                              key={emoji}
+                              className="hover:scale-110 transition-transform"
+                              onClick={() => handleReaction(message._id, emoji)}
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                          <button
+                            onClick={() => setEmojiPickerFor(message._id)}
+                            className="text-gray-500 hover:text-indigo-600"
+                          >
+                            <Smile className="w-4 h-4" />
+                          </button>
 
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
+
+                        {/* Emoji Picker */}
+                        {emojiPickerFor === message._id && (
+
+                          <div className="mt-2">
+                            <button
+                              onClick={() => setEmojiPickerFor(null)}
+                              className="text-gray-400 hover:text-gray-600 text-lg"
+                            >
+                              ✕
+                            </button>
+                            <EmojiPicker
+                              height={400}
+                              width="100%"
+                              onEmojiClick={(emojiObject) => {
+                                handleReaction(message._id, emojiObject.emoji);
+                                setEmojiPickerFor(null);
+                              }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {message.reactions && message.reactions.length > 0 && (
+                    <div className="absolute -bottom-4 left-2 flex space-x-1 bg-white px-2 py-1 rounded-full shadow border z-10">
+                      {Array.from(new Set(message.reactions.map(r => r.emoji))).map((emoji) => (
+                        <div
+                          key={emoji}
+                          className="text-sm cursor-pointer hover:scale-110 transition"
+                          onClick={() => setReactionPopupFor(message._id)} // 👈
+                        >
+                          {emoji}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {reactionPopupFor === message._id && (
+                    <div ref={reactionPopupRef} // ✅ Add this
+                      className="absolute -bottom-20 left-2 w-60 bg-white shadow-lg rounded-lg border p-3 z-20">
+                      <div className="text-sm font-medium border-b pb-1 mb-2">All Reactions</div>
+                      {message.reactions.map((r) => {
+                        const isYou = r.user === currentUser.id;
+                        const sender = conversation?.participants.find(
+                          (p) => (p._id || p.id) === r.user
+                        );
+
+                        return (
+                          <div
+                            key={r.user + r.emoji}
+                            className="flex justify-between items-center py-1 text-sm hover:bg-gray-50 px-2 rounded"
+                          >
+                            <div className="flex items-center space-x-2">
+                              <img
+                                src={
+                                  sender?.avatar ||
+                                  "https://ui-avatars.com/api/?name=" +
+                                  encodeURIComponent(sender?.name || "User")
+                                }
+                                alt="avatar"
+                                className="w-6 h-6 rounded-full"
+                              />
+                              <span>{isYou ? "You" : sender?.name || "Unknown"}</span>
+                            </div>
+                            <div
+                              className="cursor-pointer flex flex-col items-center"
+                              onClick={() => isYou && handleReaction(message._id, r.emoji)}
+                            >
+                              <span>{r.emoji}</span>
+                              {isYou && (
+                                <span className="text-[10px] text-gray-400 leading-none">select to remove</span>
+                              )}
+                            </div>
+
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
 
 
 
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
       </div>
 
 
@@ -845,11 +1041,11 @@ export default function ChatWindow({
       )}
 
       {/* Message Input */}
-      <div className="p-4 border-t border-gray-200 bg-white flex items-center space-x-3">
-        <button onClick={() => setShowEmojiPicker(!showEmojiPicker)}><Smile className="w-6 h-6 text-gray-500" /></button>
+      <div className="p-4 border-t border-gray-200 bg-white flex items-center space-x-3 w-full">
+      <button onClick={() => setShowEmojiPicker(!showEmojiPicker)}><Smile className="w-6 h-6 text-gray-500" /></button>
         {showEmojiPicker && (
           <div className="absolute bottom-16 left-4 z-10 bg-white shadow-lg p-2 rounded-lg">
-           <div className="flex justify-end mb-1">
+            <div className="flex justify-end mb-1">
               <button
                 onClick={() => setShowEmojiPicker(false)}
                 className="text-gray-400 hover:text-gray-600"
@@ -864,7 +1060,13 @@ export default function ChatWindow({
         )}
         <input type="file" ref={fileInputRef} hidden onChange={(e) => setFile(e.target.files?.[0] || null)} />
         <button onClick={() => fileInputRef.current?.click()}><Paperclip className="w-6 h-6 text-gray-500" /></button>
-        <input type="text" className="flex-1 border p-2 rounded-lg" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Type a message..." />
+        <textarea
+    className="flex-1 border p-2 rounded-lg resize-none overflow-y-auto max-h-36 break-words whitespace-pre-wrap min-w-0"
+    value={newMessage}
+    onChange={(e) => setNewMessage(e.target.value)}
+    placeholder="Type a message..."
+    rows={1}
+  />
         <button
           onClick={handleSend}
           className="bg-indigo-600 text-white px-4 py-2 rounded-lg"
@@ -882,8 +1084,45 @@ export default function ChatWindow({
             Cancel Edit
           </button>
         )}
+{showCopiedToast && (
+  <div className="fixed bottom-4 left-[65%] transform -translate-x-1/2 bg-black text-white px-4 py-2 rounded-lg shadow-lg text-sm z-50">
+    Message copied
+  </div>
+)}
+
 
       </div>
+      {deleteModal && (
+  <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex items-center justify-center">
+    <div className="bg-white rounded-lg shadow-lg w-full max-w-sm p-6 space-y-4">
+      <h2 className="text-lg font-semibold">Delete this message?</h2>
+      <p className="text-sm text-gray-600">
+        {deleteModal.forEveryone
+          ? "This message will be deleted for everyone in the chat."
+          : "This message will be deleted only from your device."}
+      </p>
+
+      <div className="flex justify-end space-x-3">
+        <button
+          onClick={() => setDeleteModal(null)}
+          className="bg-gray-200 text-gray-700 px-4 py-2 rounded hover:bg-gray-300"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={() => {
+            handleDeleteMessage(deleteModal.messageId, deleteModal.forEveryone);
+            setDeleteModal(null);
+          }}
+          className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+        >
+          Delete
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
     </div>
   );
 }

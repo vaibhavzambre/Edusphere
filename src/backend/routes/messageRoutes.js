@@ -187,6 +187,65 @@ router.get("/conversation/:conversationId", authMiddleware, async (req, res) => 
     res.status(500).json({ error: "Failed to fetch messages" });
   }
 });
+// Pin message
+// Pin message
+router.put("/pin/:conversationId", authMiddleware, async (req, res) => {
+  try {
+    const { messageId } = req.body;
+    const { conversationId } = req.params;
+
+    // 1) update conversation
+    const updatedConversation = await Conversation.findByIdAndUpdate(
+      conversationId,
+      { pinnedMessage: messageId },
+      { new: true }
+    ).populate("pinnedMessage");
+
+    // 2) emit using req.io, not io
+    req.io.to(conversationId).emit("pinnedMessageUpdated", updatedConversation.pinnedMessage);
+
+    res.json(updatedConversation.pinnedMessage);
+  } catch (err) {
+    console.error("❌ Pin error:", err);
+    res.status(500).json({ message: "Failed to pin message" });
+  }
+});
+
+
+// Unpin message
+router.put("/unpin/:conversationId", authMiddleware, async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+
+    const updatedConversation = await Conversation.findByIdAndUpdate(
+      conversationId,
+      { $unset: { pinnedMessage: 1 } },
+      { new: true }
+    );
+
+    // emit using req.io
+    req.io.to(conversationId).emit("pinnedMessageUpdated", null);
+
+    res.json(null);
+  } catch (err) {
+    console.error("❌ Unpin error:", err);
+    res.status(500).json({ message: "Failed to unpin message" });
+  }
+});
+
+
+// Get pinned message
+router.get("/pinned/:conversationId", authMiddleware, async (req, res) => {
+  try {
+    const convo = await Conversation.findById(req.params.conversationId)
+      .populate("pinnedMessage");
+
+    res.json(convo.pinnedMessage || null);
+  } catch (err) {
+    console.error("❌ Get pinned message failed:", err);
+    res.status(500).json({ message: "Failed to get pinned message" });
+  }
+});
 
 router.post("/createGroup", authMiddleware, async (req, res) => {
   try {
@@ -469,6 +528,63 @@ router.put("/delete/:id", authMiddleware, async (req, res) => {
   } catch (error) {
     console.error("❌ Error deleting message:", error);
     res.status(500).json({ error: "Delete failed" });
+  }
+});
+router.post("/forward", authMiddleware, async (req, res) => {
+  try {
+    const { messageId, targetId } = req.body;
+    const senderId = req.user.id;
+
+    const original = await Message.findById(messageId);
+    if (!original) return res.status(404).json({ error: "Message not found" });
+
+    // Reuse content and file
+    const newMsg = new Message({
+      sender: senderId,
+      receiver: targetId,
+      content: original.content,
+      file: original.file,
+      timestamp: new Date(),
+    });
+
+    // Find or create 1-1 convo
+    let convo = await Conversation.findOne({
+      isGroup: false,
+      participants: { $all: [senderId, targetId], $size: 2 },
+    });
+
+    if (!convo) {
+      convo = new Conversation({ participants: [senderId, targetId] });
+      await convo.save();
+    }
+
+    newMsg.conversationId = convo._id;
+    await newMsg.save();
+    await newMsg.populate("sender", "name email avatar");
+
+    convo.lastMessage = {
+      _id: newMsg._id,
+      content: newMsg.content,
+      timestamp: newMsg.timestamp,
+    };
+    convo.markModified("lastMessage");
+    convo.participants.forEach((uid) => {
+      if (uid.toString() !== senderId.toString()) {
+        const prev = convo.unreadCounts.get(uid.toString()) || 0;
+        convo.unreadCounts.set(uid.toString(), prev + 1);
+      }
+    });
+    await convo.save();
+
+    req.io.to(convo._id.toString()).emit("newMessage", newMsg);
+    convo.participants.forEach((uid) => {
+      req.io.to(uid.toString()).emit("conversationCreated", convo);
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("❌ Forwarding failed:", err);
+    res.status(500).json({ error: "Failed to forward" });
   }
 });
 

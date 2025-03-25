@@ -7,6 +7,24 @@
     @apply antialiased text-gray-800;
   }
 }
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .animate-ping-highlight {
+    animation: ping-fade 2s ease-in-out;
+  }
+
+  @keyframes ping-fade {
+    0% {
+      box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.3);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(0, 0, 0, 0);
+    }
+  }
+}
 
 @layer components {
   .btn-primary {

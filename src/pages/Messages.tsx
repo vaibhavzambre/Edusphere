@@ -181,7 +181,7 @@ export default function Messages() {
   replyToMessage={replyToMessage}                     // ✅ NEW
   setReplyToMessage={setReplyToMessage}  
   fetchConversations={fetchConversations}  // ✅ NEW
-  // ✅ NEW
+  conversations={conversations} // ✅ Add this
 />
 
 
