@@ -11,6 +11,7 @@ import Courses from "./pages/Courses";
 import Settings from "./pages/Settings";
 import Login from "./pages/login";
 import Register from "./pages/register";
+import ForgotPassword from "./pages/ForgotPassword";
 import { AuthProvider } from "./context/AuthContext";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import ManageTeachers from "./pages/ManageTeachers";
@@ -50,6 +51,7 @@ function App() {
           {/* Public Routes */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
 
           {/* Protected Routes */}
           <Route

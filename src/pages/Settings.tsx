@@ -1,13 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Bell,
-  Key,
-  Lock,
-  Mail,
-  Moon,
   Shield,
   User,
 } from 'lucide-react';
+import { useAuth } from "../context/AuthContext";
+import ChangePassword from "../components/settings/ChangePassword";
 
 interface SettingsSection {
   id: string;
@@ -73,54 +71,156 @@ function ProfileSettings() {
 }
 
 function SecuritySettings() {
+  const [twoFAEnabled, setTwoFAEnabled] = useState(false);
+  const [phone, setPhone] = useState("");
+  const [otp, setOtp] = useState("");
+  const [step, setStep] = useState<"idle" | "otp">("idle");
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  
+  // We'll read user + login from our AuthContext
+  const { user, login } = useAuth();
+
+  useEffect(() => {
+    // On mount or when user changes, read their 2FA status + phone
+    if (user) {
+      setTwoFAEnabled(user.twoFactorEnabled || false);
+      setPhone(user.phone || "");
+    }
+  }, [user]);
+
+  // STEP 1: Send OTP (either to new phone if enabling, or existing phone if disabling)
+  const sendOTP = async () => {
+    try {
+      setLoading(true);
+      setMessage("");
+
+      const token = localStorage.getItem("token");
+      if (!token) throw new Error("No token found in localStorage");
+
+      // If 2FA is currently enabled, we use the user’s phone
+      // If 2FA is disabled, we use the phone typed in the input
+      const response = await fetch("http://localhost:5001/api/auth/2fa/send-otp", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          phone: twoFAEnabled ? user?.phone : phone,
+          forDisable: twoFAEnabled,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message);
+
+      setMessage("OTP sent to your phone.");
+      setStep("otp");
+    } catch (err: any) {
+      setMessage(err.message || "Failed to send OTP.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // STEP 2: Verify OTP and toggle 2FA
+  const verifyAndToggle2FA = async () => {
+    try {
+      setLoading(true);
+      setMessage("");
+
+      const token = localStorage.getItem("token");
+      if (!token) throw new Error("No token found in localStorage");
+
+      const response = await fetch("http://localhost:5001/api/auth/2fa/toggle", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          enable: !twoFAEnabled,
+          phone: twoFAEnabled ? undefined : phone,
+          otp,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message);
+
+      // If server returns a new token with updated 2FA status
+      if (data.token) {
+        localStorage.setItem("token", data.token);
+        login(data.token); // Tells AuthContext to decode + update `user`
+      }
+
+      // Flip the local 2FA state
+      setTwoFAEnabled(!twoFAEnabled);
+      setStep("idle");
+      setOtp("");
+      setMessage(data.message || "2FA status updated.");
+    } catch (err: any) {
+      setMessage(err.message || "OTP verification failed.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-medium text-gray-900">Change Password</h3>
-        <form className="mt-4 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Current Password
-            </label>
-            <input
-              type="password"
-              className="mt-1 input-primary"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              New Password
-            </label>
-            <input
-              type="password"
-              className="mt-1 input-primary"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Confirm New Password
-            </label>
-            <input
-              type="password"
-              className="mt-1 input-primary"
-            />
-          </div>
-          <div className="flex justify-end">
-            <button type="submit" className="btn-primary">
-              Update Password
-            </button>
-          </div>
-        </form>
+      <h3 className="text-lg font-medium text-gray-900">Two-Factor Authentication (2FA)</h3>
+
+      {/* If 2FA is NOT enabled + not in OTP step => show phone input */}
+      {!twoFAEnabled && step === "idle" && (
+        <>
+          <label className="block text-sm font-medium text-gray-700">Phone Number</label>
+          <input
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="Enter phone number"
+            className="input-primary mt-1"
+          />
+        </>
+      )}
+
+      {/* If we are in the OTP step => show OTP input */}
+      {step === "otp" && (
+        <>
+          <label className="block text-sm font-medium text-gray-700">Enter OTP</label>
+          <input
+            type="text"
+            value={otp}
+            onChange={(e) => setOtp(e.target.value)}
+            placeholder="6-digit OTP"
+            className="input-primary mt-1"
+          />
+        </>
+      )}
+
+      <div className="flex items-center space-x-4 mt-4">
+        {step === "idle" ? (
+          <button
+            className="btn-secondary"
+            onClick={sendOTP}
+            disabled={loading}
+          >
+            {twoFAEnabled ? "Disable 2FA" : "Enable 2FA"}
+          </button>
+        ) : (
+          <button
+            className="btn-primary"
+            onClick={verifyAndToggle2FA}
+            disabled={loading}
+          >
+            Verify OTP
+          </button>
+        )}
+        {loading && <span className="text-sm text-gray-500">Processing...</span>}
       </div>
 
-      <div className="pt-6 border-t border-gray-200">
-        <h3 className="text-lg font-medium text-gray-900">Two-Factor Authentication</h3>
-        <div className="mt-4">
-          <button type="button" className="btn-secondary">
-            Enable 2FA
-          </button>
-        </div>
-      </div>
+      {message && <p className="text-sm text-blue-600">{message}</p>}
     </div>
   );
 }
@@ -177,16 +277,10 @@ export default function Settings() {
   const sections: SettingsSection[] = [
     { id: 'profile', title: 'Profile', icon: User, component: ProfileSettings },
     { id: 'security', title: 'Security', icon: Shield, component: SecuritySettings },
-    {
-      id: 'notifications',
-      title: 'Notifications',
-      icon: Bell,
-      component: NotificationSettings,
-    },
+    { id: 'notifications', title: 'Notifications', icon: Bell, component: NotificationSettings },
   ];
 
   const [activeSection, setActiveSection] = useState(sections[0]);
-
   const ActiveComponent = activeSection.component;
 
   return (
@@ -217,8 +311,9 @@ export default function Settings() {
             </nav>
           </div>
 
-          <div className="p-6 md:col-span-3">
+          <div className="p-6 md:col-span-3 space-y-6">
             <ActiveComponent />
+            {activeSection.id === 'security' && <ChangePassword />}
           </div>
         </div>
       </div>

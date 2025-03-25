@@ -24,6 +24,8 @@ import "./utils/announcementCleanup.js";
 dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5001;
+const mongoUri = process.env.MONGO_URI;
+
 
 // Create HTTP server and attach Express app
 const server = createServer(app);
@@ -54,7 +56,7 @@ app.use(fileUpload());
 
 // Mongoose + GridFS
 mongoose
-  .connect("mongodb://localhost:27017/main_db", {
+  .connect(mongoUri, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
   })

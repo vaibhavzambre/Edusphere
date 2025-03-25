@@ -18,6 +18,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     console.log("Logging out...");
     localStorage.removeItem("token");
     setUser(null);
+
     if (sessionExpired) {
       // Redirect to login with a query parameter to indicate session expiration
       window.location.href = "/login?sessionExpired=true";
@@ -44,9 +45,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  // On mount, or if the page refreshes, check for an existing token
   useEffect(() => {
     const token = localStorage.getItem("token");
     console.log("Checking localStorage token:", token);
+
     if (token) {
       try {
         const decodedUser = JSON.parse(atob(token.split(".")[1]));
@@ -54,6 +57,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           console.log("Token is expired on initial check");
           logout(true);
         } else {
+          // Store the entire payload in user state
+          // This includes phone, twoFactorEnabled, role, etc.
           setUser({ token, ...decodedUser });
         }
       } catch (error) {
@@ -62,18 +67,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setUser(null);
       }
     }
-    // Check every minute whether the token has expired.
+
+    // Check token expiration every minute
     const interval = setInterval(checkTokenExpiration, 60000);
     return () => clearInterval(interval);
   }, []);
 
+  // Called after successful login or after verifying OTP
   const login = (token: string) => {
     try {
       console.log("Login successful, storing token:", token);
       const decodedUser = JSON.parse(atob(token.split(".")[1]));
+      console.log("Decoded JWT Payload:", decodedUser); // <-- Add this debug
+
+      // Store in localStorage + update state
       localStorage.setItem("token", token);
       setUser({ token, ...decodedUser });
-      window.location.href = "/"; // Redirect after login
+
+      // Optionally redirect to home (or remove this if you want to stay on the same page)
+      window.location.href = "/";
     } catch (error) {
       console.error("Login error:", error);
     }
@@ -81,7 +93,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   console.log("AuthContext user state:", user);
 
-  return <AuthContext.Provider value={{ user, login, logout }}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{ user, login, logout }}>
+      {children}
+    </AuthContext.Provider>
+  );
 };
 
 export const useAuth = () => {

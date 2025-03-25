@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@emoji-mart/data": "^1.2.1",
+    "@aws-sdk/client-s3": "^3.772.0",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",
     "@mui/icons-material": "^6.4.3",
@@ -19,12 +19,12 @@
     "@shadcn/ui": "^0.0.4",
     "@types/node": "^22.13.0",
     "@types/react-router-dom": "^5.3.3",
+    "aws-sdk": "^2.1692.0",
     "axios": "^1.7.9",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
-    "emoji-mart": "^5.6.0",
     "emoji-picker-react": "^4.12.2",
     "express": "^4.21.2",
     "express-fileupload": "^1.5.1",
@@ -44,11 +44,11 @@
     "passport-local": "^1.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-hot-toast": "^2.5.2",
     "react-router-dom": "^6.29.0",
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1",
-    "student-portal": "file:"
+    "student-portal": "file:",
+    "twilio": "^5.5.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.9.1",

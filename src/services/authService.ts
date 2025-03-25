@@ -23,3 +23,22 @@ export const getProfile = async (token: string) => {
   });
   return response.json();
 };
+
+
+export const forgotPasswordRequest = async (formData:any) => {
+  const response = await fetch("http://localhost:5001/api/auth/forgot-password-request", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(formData),
+  });
+  return response.json();
+};
+
+export const resetPassword = async (formData:any) => {
+  const response = await fetch("http://localhost:5001/api/auth/reset-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(formData),
+  });
+  return response.json();
+};

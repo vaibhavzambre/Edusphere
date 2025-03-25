@@ -4,11 +4,6 @@ import { authMiddleware,checkAdmin } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-/**
- * @route   GET /api/users/students
- * @desc    Fetch all students with their SAP ID
- * @access  Private (Only authenticated users)
- */
 router.get("/all", authMiddleware, async (req, res) => {
   try {
     const users = await User.find({}, "name email role avatar");
@@ -19,6 +14,11 @@ router.get("/all", authMiddleware, async (req, res) => {
   }
 });
 
+/**
+ * @route   GET /api/users/students
+ * @desc    Fetch all students with their SAP ID
+ * @access  Private (Only authenticated users)
+ */
 router.get("/students", authMiddleware,checkAdmin, async (req, res) => {
   try {
     const students = await User.find({ role: "student" })
