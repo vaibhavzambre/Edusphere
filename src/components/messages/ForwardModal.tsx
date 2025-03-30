@@ -1,16 +1,19 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { Conversation, User } from "../../types";
+import { Message } from "../../types"; // ✅ Add this
 
 interface ForwardModalProps {
-  messageContent: string;
+  // messageContent: string;
   currentUser: any;
+  message: Message;
+
   onClose: () => void;
   setSelectedConversation: (c: Conversation) => void;
 }
 
 export default function ForwardModal({
-  messageContent,
+message,
   currentUser,
   onClose,
   setSelectedConversation,
@@ -22,10 +25,13 @@ export default function ForwardModal({
   const [forwarded, setForwarded] = useState(false);
 
   useEffect(() => {
-    fetchConversations();
-    fetchUsers();
+    const loadAll = async () => {
+      await fetchConversations();  // ⏳ Waits for conversations
+      await fetchUsers();          // ✅ Then fetches users safely
+    };
+    loadAll();
   }, []);
-
+  
   const fetchConversations = async () => {
     const token = localStorage.getItem("token");
     const res = await axios.get("http://localhost:5001/api/messages/conversations", {
@@ -71,10 +77,12 @@ export default function ForwardModal({
           "http://localhost:5001/api/messages/send",
           {
             conversationId: convoId,
-            content: messageContent,
+            content: message.content,
+            file: message.file || null, // ✅ include file if any
           },
           { headers: { Authorization: `Bearer ${token}` } }
         );
+        
 
         if (isSingle) {
           const convo = await axios.get(`http://localhost:5001/api/messages/conversations/${convoId}`, {
@@ -95,7 +103,8 @@ export default function ForwardModal({
           {
             conversationId: convo._id,
             receiver: id,
-            content: messageContent,
+            content: message.content
+            ,
           },
           { headers: { Authorization: `Bearer ${token}` } }
         );

@@ -24,10 +24,13 @@ const ConversationSchema = new mongoose.Schema({
     ref: "Message",
     default: null,
   },  
-  
+  description: { type: String, default: "" },
+
   isGroup: { type: Boolean, default: false },
   groupName: { type: String, default: "" },
-  groupAdmin: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+  groupAdmin: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+
 },
 { timestamps: true });
 

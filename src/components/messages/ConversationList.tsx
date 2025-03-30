@@ -282,7 +282,7 @@ export default function ConversationList({
         );
       }
     });
-  
+
     socket.on("markedAsRead", (conversationId) => {
       if (setConversations) {
         setConversations((prev) =>
@@ -292,13 +292,13 @@ export default function ConversationList({
         );
       }
     });
-  
+
     return () => {
       socket.off("newMessage");
       socket.off("markedAsRead");
     };
   }, [selectedConversationId, setConversations]);
-  
+
   // ----------------------------------------
   // 7) Render
   // ----------------------------------------
@@ -396,7 +396,7 @@ export default function ConversationList({
               key={(conversation._id || conversation.id) + (conversation.lastMessage?.timestamp || '')}
               onClick={async () => {
                 onSelectConversation(conversation);
-              
+
                 // 🧠 Only mark as read + move to top if unread
                 if (conversation.unreadCount && conversation.unreadCount > 0 && setConversations) {
                   try {
@@ -406,13 +406,13 @@ export default function ConversationList({
                       {},
                       { headers: { Authorization: `Bearer ${token}` } }
                     );
-              
+
                     // ✅ Update conversation unread count + re-sort
                     setConversations((prev) => {
                       const updated = prev.map((c) =>
                         c._id === conversation._id ? { ...c, unreadCount: 0 } : c
                       );
-              
+
                       return [...updated].sort((a, b) => {
                         const aTime = new Date(a.lastMessage?.timestamp || 0).getTime();
                         const bTime = new Date(b.lastMessage?.timestamp || 0).getTime();
@@ -424,12 +424,12 @@ export default function ConversationList({
                   }
                 }
               }}
-              
-                              className={`w-full p-4 flex items-center space-x-3 hover:bg-gray-50
+
+              className={`w-full p-4 flex items-center space-x-3 hover:bg-gray-50
                 ${isActive ? "bg-indigo-50" : ""}
                 ${conversation.unreadCount && conversation.unreadCount > 0 ? "font-semibold" : ""}
               `}
-              
+
             >
               {/* Avatar: group or single */}
               {isGroup ? (
@@ -451,49 +451,49 @@ export default function ConversationList({
                 />
               )}
 
-<div className="flex-1 min-w-0">
-  <div className="flex items-center justify-between">
-  <div className="flex items-center space-x-2">
-  <p className="font-medium text-gray-900 truncate">
-    {isGroup
-      ? conversation.groupName || "Unnamed Group"
-      : (otherParticipant as any)?.name || "Unknown"}
-  </p>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <p className="font-medium text-gray-900 truncate">
+                      {isGroup
+                        ? conversation.groupName || "Unnamed Group"
+                        : (otherParticipant as any)?.name || "Unknown"}
+                    </p>
 
-  {(conversation.unreadCount || 0) > 0 && (
-<span className="ml-1 bg-indigo-600 text-white text-xs font-semibold px-2 py-0.5 rounded-full">
-  {conversation.unreadCount}
-</span>
-)}
+                    {(conversation.unreadCount || 0) > 0 && (
+                      <span className="ml-1 bg-indigo-600 text-white text-xs font-semibold px-2 py-0.5 rounded-full">
+                        {conversation.unreadCount}
+                      </span>
+                    )}
 
-</div>
+                  </div>
 
 
-    {conversation.lastMessage?.timestamp && (
-      <span className="text-xs text-gray-500">
-        {new Date(conversation.lastMessage.timestamp).toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-        })}
-      </span>
-    )}
-  </div>
+                  {conversation.lastMessage?.timestamp && (
+                    <span className="text-xs text-gray-500">
+                      {new Date(conversation.lastMessage.timestamp).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  )}
+                </div>
 
-  <p className="text-sm text-gray-500 truncate">
-    {!conversation.lastMessage
-      ? "No messages yet"
-      : conversation.lastMessage.isDeletedForEveryone
-      ? "🗑️ Message deleted"
-      : conversation.lastMessage.file
-      ? "📎 Sent an attachment"
-      : conversation.lastMessage.content || "—"}
-  </p>
-</div>
+                <p className="text-sm text-gray-500 truncate">
+                  {!conversation.lastMessage
+                    ? "No messages yet"
+                    : conversation.lastMessage.isDeletedForEveryone
+                      ? "🗑️ Message deleted"
+                      : conversation.lastMessage.file
+                        ? "📎 Sent an attachment"
+                        : conversation.lastMessage.content || "—"}
+                </p>
+              </div>
 
             </button>
           );
         })}
-        
+
       </div>
 
       {/* NEW GROUP MODAL */}
@@ -526,7 +526,12 @@ export default function ConversationList({
                 placeholder="Enter group name..."
                 value={groupName}
                 onChange={(e) => setGroupName(e.target.value)}
+                maxLength={25}
               />
+                <p className="text-xs text-gray-500 text-right mt-1">
+    {groupName.length}/25 characters
+  </p>
+
             </div>
 
             {/* Select Classes (multi-check) */}
@@ -546,8 +551,8 @@ export default function ConversationList({
                       checked={selectedClassIds.includes(cls._id)}
                       onChange={() => toggleClassSelection(cls._id)}
                     />
-                    {cls.class_code} - {cls.commencement_year} (
-                    {cls.specialization})
+                    {cls.class_code} - {cls.commencement_year} ({cls.specialization} {cls.course})
+
                   </label>
                 ))}
               </div>
@@ -562,9 +567,7 @@ export default function ConversationList({
               >
                 ➕ Add Individual Participants
               </button>
-              <p className="text-sm text-gray-500 mt-1">
-                (Already excludes users with role="admin")
-              </p>
+
 
               {/* Show selected user count (optional) */}
               {selectedUserIds.length > 0 && (

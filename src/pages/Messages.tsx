@@ -7,10 +7,14 @@ import { Conversation, Message } from "../types";
 
 const socket = io("http://localhost:5001");
 const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
+import { useSearchParams } from "react-router-dom";
+
 
 export default function Messages() {
   const [replyToMessage, setReplyToMessage] = useState<Message | null>(null);
-
+  const [searchParams] = useSearchParams();
+  const conversationIdFromUrl = searchParams.get("conversationId");
+  
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [loading, setLoading] = useState(true);
@@ -19,6 +23,15 @@ export default function Messages() {
   // ✅ FLAG: to track if we just sent a message to create a new conversation
   const [wasNewConversationSent, setWasNewConversationSent] = useState(false);
   const [prefilledMessage, setPrefilledMessage] = useState<string>("");
+  useEffect(() => {
+    if (conversationIdFromUrl && conversations.length > 0) {
+      const found = conversations.find(c => c._id === conversationIdFromUrl);
+      if (found) {
+        setSelectedConversation(found);
+      }
+    }
+  }, [conversationIdFromUrl, conversations]);
+  
   const refetchSingleConversation = async (conversationId: string) => {
     try {
       const token = localStorage.getItem("token");

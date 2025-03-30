@@ -6,8 +6,12 @@ const MessageSchema = new mongoose.Schema(
     receiver: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null }, // ✅ optional for group
     conversationId: { type: mongoose.Schema.Types.ObjectId, ref: "Conversation", required: true },
     content: { type: String, default: "" }, // Text message content
-    file: { type: String, default: null }, // Stores GridFS file ID
-    read: { type: Boolean, default: false },
+    file: {
+      _id: { type: mongoose.Schema.Types.ObjectId, ref: "uploads.files" },
+      name: { type: String },
+      type: { type: String }
+    },
+        read: { type: Boolean, default: false },
     // Message.js
     deletedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     readBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],

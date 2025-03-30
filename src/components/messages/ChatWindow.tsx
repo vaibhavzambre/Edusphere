@@ -17,6 +17,7 @@ import { useAuth } from "../../context/AuthContext";
 import EmojiPicker from "emoji-picker-react"; // ✅ Make sure this library is installed
 import type { Conversation, Message } from "../../types";
 import GroupInfoPanel from "./GroupInfoPanel"; // or correct path
+import { File } from "lucide-react";
 
 interface ChatWindowProps {
   conversation: Conversation | null;
@@ -74,23 +75,37 @@ export default function ChatWindow({
   const unreadMessageRef = useRef<HTMLDivElement>(null);
   const [firstUnreadMessageIndex, setFirstUnreadMessageIndex] = useState<number | null>(null);
   const lastMessageRef = useRef<HTMLDivElement>(null);
-  
+
   const [pinnedMessage, setPinnedMessage] = useState<Message | null>(null);
   const pinnedMessageRef = useRef<HTMLDivElement>(null);
   const [showCopiedToast, setShowCopiedToast] = useState(false);
 
   //states for forward modal 
   const [showForwardModal, setShowForwardModal] = useState(false);
-const [forwardMessage, setForwardMessage] = useState<Message | null>(null);
-const [allConversations, setAllConversations] = useState<Conversation[]>([]);
-const [selectedForwardConversationIds, setSelectedForwardConversationIds] = useState<string[]>([]);
-const [messageToForward, setMessageToForward] = useState<Message | null>(null);
+  const [forwardMessage, setForwardMessage] = useState<Message | null>(null);
+  const [allConversations, setAllConversations] = useState<Conversation[]>([]);
+  const [selectedForwardConversationIds, setSelectedForwardConversationIds] = useState<string[]>([]);
+  const [messageToForward, setMessageToForward] = useState<Message | null>(null);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  const [imagePreview, setImagePreview] = useState<{ url: string; filename: string } | null>(null);
+  const openImageModal = (url: string, filename: string) => {
+    setImagePreview({ url, filename });
+  };
+  const closeImageModal = () => {
+    setImagePreview(null);
+    setZoom(1); // reset zoom on close
+  };
+  
+  const handleImagePreview = (url: string) => {
+    setPreviewImageUrl(url);
+  };
+  const [zoom, setZoom] = useState(1);
 
-//for delete confirmation
-const [deleteModal, setDeleteModal] = useState<{
-  messageId: string;
-  forEveryone: boolean;
-} | null>(null);
+  //for delete confirmation
+  const [deleteModal, setDeleteModal] = useState<{
+    messageId: string;
+    forEveryone: boolean;
+  } | null>(null);
 
   useEffect(() => {
     if (!loading && messages.length > 0) {
@@ -106,7 +121,7 @@ const [deleteModal, setDeleteModal] = useState<{
       }
     }
   }, [loading, messages, firstUnreadMessageIndex]);
-  
+
 
   const handleClearReply = () => {
     setReplyTo(null);
@@ -207,17 +222,17 @@ const [deleteModal, setDeleteModal] = useState<{
 
   const handleForward = async () => {
     if (!forwardMessage || selectedForwardConversationIds.length === 0) return;
-  
+
     try {
       const token = localStorage.getItem("token");
-  
+
       for (const convoId of selectedForwardConversationIds) {
         const payload: any = {
           conversationId: convoId,
           content: forwardMessage.content,
           file: forwardMessage.file,
         };
-  
+
         const convo = allConversations.find(c => c._id === convoId);
         if (convo && !convo.isGroup) {
           const receiver = convo.participants.find(p =>
@@ -227,12 +242,12 @@ const [deleteModal, setDeleteModal] = useState<{
             payload.receiver = receiver._id || receiver.id;
           }
         }
-  
+
         await axios.post("http://localhost:5001/api/messages/send", payload, {
           headers: { Authorization: `Bearer ${token}` },
         });
       }
-  
+
       setShowForwardModal(false);
       setSelectedForwardConversationIds([]);
       setForwardMessage(null);
@@ -240,14 +255,14 @@ const [deleteModal, setDeleteModal] = useState<{
       console.error("❌ Failed to forward message:", err);
     }
   };
-  
+
   const onForward = async (message: Message) => {
     try {
       const token = localStorage.getItem("token");
       const res = await axios.get("http://localhost:5001/api/messages/conversations", {
         headers: { Authorization: `Bearer ${token}` }
       });
-  
+
       setAllConversations(res.data);
       setForwardMessage(message);
       setShowForwardModal(true);
@@ -255,7 +270,7 @@ const [deleteModal, setDeleteModal] = useState<{
       console.error("❌ Failed to load conversations for forwarding:", err);
     }
   };
-  
+
 
   const onStar = (message: Message) => {
     console.log("Star message:", message.content);
@@ -285,7 +300,7 @@ const [deleteModal, setDeleteModal] = useState<{
       console.error("❌ Failed to unpin:", err);
     }
   };
-  
+
 
   const onSelect = (message: Message) => {
     console.log("Selected message:", message.content);
@@ -307,18 +322,11 @@ const [deleteModal, setDeleteModal] = useState<{
           },
         }
       );
-
-
       socket.emit("reacted", response.data); // optional but useful fallback
-
-      // Don't manually update messages here if socket handles it
-      // socket.emit("reacted", response.data); // optional
-
     } catch (error) {
       console.error("❌ Failed to react to message:", error);
     }
   };
-
 
 
   // ✅ Edit Message
@@ -454,9 +462,18 @@ const [deleteModal, setDeleteModal] = useState<{
 
     socket.on("newMessage", (newMsg: Message) => {
       // Only append if it belongs to the currently open conversation
+
       if (newMsg.conversationId === conversation?._id) {
         setMessages((prev) => [...prev, newMsg]);
+
+        // Mark as read immediately if user is in the same chat
+        if (conversation) {
+          markAsRead(conversation._id);
+        }
+        markAsRead(conversation._id);
+
       }
+
       fetchConversations();
       fetchPinnedMessage();
     });
@@ -511,14 +528,14 @@ const [deleteModal, setDeleteModal] = useState<{
   };
   const fetchPinnedMessage = async () => {
     if (!conversation?._id) return;
-  
+
     const res = await axios.get(`http://localhost:5001/api/messages/pinned/${conversation._id}`, {
       headers: { Authorization: `Bearer ${token}` }
     });
-  
+
     setPinnedMessage(res.data); // can be null or a message
   };
-  
+
   // ✅ Handle sending messages & files
   const handleSend = async () => {
     if (editingMessage) {
@@ -541,11 +558,10 @@ const [deleteModal, setDeleteModal] = useState<{
     const messageData: any = {
       conversationId: conversation?._id,
       content: newMessage,
-      file: filePath,
+      file: filePath,  // ✅ now this includes {_id, name, type}
       replyTo: replyTo?._id || null,
     };
-
-
+    
     if (!conversation?.isGroup) {
       messageData.receiver = otherParticipant?._id || otherParticipant?.id;
     }
@@ -559,12 +575,6 @@ const [deleteModal, setDeleteModal] = useState<{
           Authorization: `Bearer ${token}`,
         },
       });
-
-      // socket.emit("sendMessage", response.data);
-
-      // ✅ DO NOT manually add to local state
-      // setMessages((prevMessages) => [...prevMessages, response.data]); ❌
-
       // ✅ Clear input fields
       setNewMessage("");
       setFile(null);
@@ -575,40 +585,37 @@ const [deleteModal, setDeleteModal] = useState<{
     }
   };
 
-
-
   // ✅ Upload file to GridFS
   const uploadFile = async (file: File) => {
     try {
       const formData = new FormData();
       formData.append("file", file);
-
-      console.log("📤 Uploading file to server...");
+  
       const response = await axios.post("http://localhost:5001/api/attachments/upload", formData, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
-
-      console.log("📁 Upload response:", response.data);
-
-      if (response.data && response.data.filePath) {
-        return response.data.filePath;
-      } else {
-        console.error("❌ No file path returned from server.");
-        return null;
+  
+      if (response.data?.filePath) {
+        return {
+          _id: response.data.filePath,
+          name: response.data.filename,
+          type: response.data.contentType,
+        };
       }
+      return null;
     } catch (error) {
       console.error("❌ Failed to upload file:", error);
       return null;
     }
   };
-
+  
 
 
   return (
-<div className="flex-1 flex flex-col h-full bg-gray-50 max-w-full overflow-hidden">
-{/* Chat Header */}
+    <div className="flex-1 flex flex-col h-full bg-gray-50 max-w-full overflow-hidden">
+      {/* Chat Header */}
       {/* Chat Header */}
 
       <div className="p-4 border-b border-gray-200 bg-white flex items-center space-x-3">
@@ -654,64 +661,64 @@ const [deleteModal, setDeleteModal] = useState<{
       {showInfoPanel && conversation?.isGroup && (
         <GroupInfoPanel
           conversation={conversation}
+          fetchConversations={fetchConversations}
+          socket={socket} // 👈 from ChatWindow
+          setSelectedConversation={setSelectedConversation} // ✅ ADD THIS
+
           onClose={() => setShowInfoPanel(false)}
         />
       )}
       {/* Messages */}
-
-      {/* Messages Container */}
       {/* Messages Container */}
       {pinnedMessage && (
-  <div
-    onClick={() => {
-      const el = document.getElementById(`msg-${pinnedMessage._id}`);
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        el.classList.remove('animate-ping-highlight');
-        void el.offsetWidth;
-        el.classList.add('animate-ping-highlight');
-      }
-    }}
-    className="cursor-pointer bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 text-sm flex justify-between items-center"
-  >
-    <div className="truncate max-w-[80%]">
-      📌 Pinned: <span className="font-medium">{pinnedMessage.content || "Attachment"}</span>
-    </div>
-    <button
-      onClick={(e) => {
-        e.stopPropagation();
-        onUnpin();
-      }}
-      className="text-xs text-red-600 hover:underline ml-2"
-    >
-      Unpin
-    </button>
-  </div>
-)}
+        <div
+          onClick={() => {
+            const el = document.getElementById(`msg-${pinnedMessage._id}`);
+            if (el) {
+              el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              el.classList.remove('animate-ping-highlight');
+              void el.offsetWidth;
+              el.classList.add('animate-ping-highlight');
+            }
+          }}
+          className="cursor-pointer bg-yellow-100 text-yellow-800 border-l-4 border-yellow-500 px-4 py-2 text-sm flex justify-between items-center"
+        >
+          <div className="truncate max-w-[80%]">
+            📌 Pinned: <span className="font-medium">{pinnedMessage.content || "Attachment"}</span>
+          </div>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onUnpin();
+            }}
+            className="text-xs text-red-600 hover:underline ml-2"
+          >
+            Unpin
+          </button>
+        </div>
+      )}
 
 
       <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-3" ref={scrollContainerRef}>
-      {messages
-  .filter((message) => !message.deletedBy?.includes(currentUser.id))
-  .map((message, index) => {
+        {messages
+          .filter((message) => !message.deletedBy?.includes(currentUser.id))
+          .map((message, index) => {
 
             const isLast = index === messages.length - 1;
             return (
 
-<div
-  key={message._id}
-  id={`msg-${message._id}`}
-  ref={pinnedMessage?._id === message._id ? pinnedMessageRef : null}
-  className={`flex ${
-    (message.sender?._id || message.sender?.id || message.sender) === currentUser.id
-      ? 'justify-end'
-      : 'justify-start'
-  } w-full max-w-full px-4 min-w-0 ${
-    pinnedMessage?._id === message._id ? 'animate-ping-highlight' : ''
-  }`}
-  onMouseEnter={() => setHoveredMessageId(message._id)}
-  onMouseLeave={() => setHoveredMessageId(null)}
->
+              <div
+                key={message._id}
+                id={`msg-${message._id}`}
+                ref={pinnedMessage?._id === message._id ? pinnedMessageRef : null}
+                className={`flex ${(message.sender?._id || message.sender?.id || message.sender) === currentUser.id
+                  ? 'justify-end'
+                  : 'justify-start'
+                  } w-full max-w-full px-4 min-w-0 ${pinnedMessage?._id === message._id ? 'animate-ping-highlight' : ''
+                  }`}
+                onMouseEnter={() => setHoveredMessageId(message._id)}
+                onMouseLeave={() => setHoveredMessageId(null)}
+              >
 
                 {message.replyTo && (
                   <div className="text-xs text-gray-700 mb-1 p-2 border-l-4 border-indigo-400 bg-indigo-50 rounded">
@@ -720,16 +727,12 @@ const [deleteModal, setDeleteModal] = useState<{
                   </div>
                 )}
 
-
                 {/* Message Bubble */}
-                <div 
-  className={`relative max-w-[min(85%,_500px)] p-3 rounded-lg ${
-    (message.sender?._id || message.sender?.id || message.sender) === currentUser.id
-      ? 'bg-indigo-600 text-white'
-      : 'bg-gray-100 text-gray-900'
-  }`}>
-
-
+                <div
+                  className={`relative max-w-[min(85%,_500px)] p-3 rounded-lg ${(message.sender?._id || message.sender?.id || message.sender) === currentUser.id
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-gray-100 text-gray-900'
+                    }`}>
 
                   {/* Sender Name (group only) */}
                   {conversation?.isGroup && (message.sender?._id || message.sender?.id) !== currentUser.id && (
@@ -740,36 +743,48 @@ const [deleteModal, setDeleteModal] = useState<{
                     </p>
                   )}
 
-
                   {/* Message Content */}
+                  {/* === MESSAGE BODY === */}
                   {message.file ? (
-                    message.file.match(/\.(jpg|jpeg|png|gif)$/i) ? (
-                      <img
-                        src={`http://localhost:5001/api/attachments/${message.file}`}
-                        alt="Sent file"
-                        className="max-w-full rounded-md max-h-64 object-cover"
-                      />
-                    ) : message.file.match(/\.(mp4|mov|avi)$/i) ? (
-                      <video
-                        controls
-                        className="max-w-full rounded-md max-h-64"
-                      >
-                        <source src={`http://localhost:5001/api/attachments/${message.file}`} />
-                      </video>
+                    message.file.type?.startsWith("image/") ? (
+                      // IMAGE PREVIEW
+                      <>
+                        <div
+onClick={() =>
+  openImageModal(
+    `http://localhost:5001/api/attachments/${message.file._id}`,
+    message.file.name || "Image"
+  )
+}
+                          className="cursor-pointer"
+                        >
+                          <img
+                            src={`http://localhost:5001/api/attachments/${message.file._id}`}
+                            alt="Sent file"
+                            className="max-w-full rounded-md max-h-64 object-cover"
+                          />
+                        </div>
+                        {/* <p className="text-xs text-gray-500 mt-1">{message.file.name}</p> */}
+                      </>
                     ) : (
-                      <a
-                        href={`http://localhost:5001/api/attachments/${message.file}`}
-                        className="flex items-center space-x-2 text-blue-300 hover:text-blue-400"
-                        download
-                      >
-                        <FileText className="w-5 h-5" />
-                        <span>Download File</span>
-                      </a>
+                      // DOCUMENT PREVIEW
+                      <div className="flex items-center space-x-2 bg-white p-2 rounded shadow text-sm">
+                        <File className="w-4 h-4 text-gray-600" />
+                        <a
+href={`http://localhost:5001/api/attachments/${message.file._id}`}
+                          download
+                          className="flex items-center space-x-2 text-blue-600 hover:text-blue-800"
+                        >
+                          <FileText className="w-5 h-5" />
+                          <span>{message.file.name || "Download File"}</span>
+                          <span></span>
+                        </a>
+
+
+                      </div>
                     )
                   ) : (
-<p className="break-words whitespace-pre-wrap overflow-x-hidden text-left max-w-full">
-  {message.content}
-</p>
+                    <p className="whitespace-pre-wrap">{message.content}</p>
                   )}
 
                   {/* Timestamp */}
@@ -784,29 +799,32 @@ const [deleteModal, setDeleteModal] = useState<{
 
                   {/* Dropdown Trigger */}
                   {hoveredMessageId === message._id && (
-                    <button
-                      onClick={() => setDropdownFor(message._id)}
-                      className={`absolute -bottom-3 ${(message.sender?._id || message.sender?.id || message.sender) === currentUser.id
-                          ? 'left-2'   // You sent the message → show button on left
-                          : 'right-2'  // They sent the message → show button on right
-                        } bg-white rounded-full shadow-sm p-1 hover:bg-gray-50 border border-gray-200`}
-                    >
-                      <MoreVertical className="w-4 h-4 text-gray-600" />
-                    </button>
+  <button
+    onClick={() => setDropdownFor(message._id)}
+    className={`absolute top-1/2 -translate-y-1/2 group z-50 
+      ${(message.sender === currentUser.id || message.sender?._id === currentUser.id)
+        ? 'left-[-40px]'  // sender (right side bubble) → show pill on left
+        : 'right-[-40px]'}  // receiver (left side bubble) → show pill on right
+     bg-white shadow-md border px-2 py-1 rounded-full flex items-center space-x-1
+  transition-all duration-200 ease-in hover:scale-105`}
+    title="Message options"
+  >
+    <MoreVertical className="w-4 h-4 text-gray-500" />
+    <Smile className="w-4 h-4 text-gray-500" />
+  </button>
+)}
 
-                  )}
 
                   {/* Dropdown Menu */}
                   {dropdownFor === message._id && (
                     <div
                       ref={dropdownRef}
                       className={`absolute top-full mt-1 ${(message.sender?._id || message.sender?.id || message.sender) === currentUser.id
-                          ? 'right-0'   // for messages sent by you (right side)
-                          : 'left-0'    // for others (left side)
+                        ? 'right-0'   // for messages sent by you (right side)
+                        : 'left-0'    // for others (left side)
                         } ${emojiPickerFor === message._id ? 'w-74' : 'w-48'}
                   bg-white border rounded-lg shadow-lg z-[1000] text-sm text-gray-700 overflow-hidden`}
                     >
-
 
                       <button
                         onClick={() => setReplyTo(message)}
@@ -815,15 +833,15 @@ const [deleteModal, setDeleteModal] = useState<{
                         ↩️ Reply
                       </button>
                       <button
-  onClick={() => {
-    navigator.clipboard.writeText(message.content);
-    setShowCopiedToast(true);
-    setTimeout(() => setShowCopiedToast(false), 1500); // Hide after 1.5s
-  }}
-  className="block w-full px-4 py-2 hover:bg-gray-100 text-left"
->
-  📋 Copy
-</button>
+                        onClick={() => {
+                          navigator.clipboard.writeText(message.content);
+                          setShowCopiedToast(true);
+                          setTimeout(() => setShowCopiedToast(false), 1500); // Hide after 1.5s
+                        }}
+                        className="block w-full px-4 py-2 hover:bg-gray-100 text-left"
+                      >
+                        📋 Copy
+                      </button>
                       {message.sender !== currentUser.id && (
                         <button
                           onClick={() => onReplyPrivately(message)}
@@ -832,26 +850,26 @@ const [deleteModal, setDeleteModal] = useState<{
                           🙈 Reply Privately
                         </button>
                       )}
-<button
-  onClick={() => {
-    setShowForwardModal(true);
-    setMessageToForward(message);
-  }}
-  className="block w-full px-4 py-2 hover:bg-gray-100 text-left"
->
-  🔁 Forward
-</button>                      {showForwardModal && messageToForward && (
-  <ForwardModal
-  messageContent={messageToForward.content}
-  currentUser={currentUser}
-  onClose={() => {
-    setShowForwardModal(false);
-    setMessageToForward(null);
-  }}
-  setSelectedConversation={setSelectedConversation}
-/>
+                      <button
+                        onClick={() => {
+                          setShowForwardModal(true);
+                          setMessageToForward(message);
+                        }}
+                        className="block w-full px-4 py-2 hover:bg-gray-100 text-left"
+                      >
+                        🔁 Forward
+                      </button>                      {showForwardModal && messageToForward && (
+                        <ForwardModal
+                        message={messageToForward}
+                        currentUser={currentUser}
+                          onClose={() => {
+                            setShowForwardModal(false);
+                            setMessageToForward(null);
+                          }}
+                          setSelectedConversation={setSelectedConversation}
+                        />
 
-)}
+                      )}
 
                       <button onClick={() => onStar(message)} className="block w-full px-4 py-2 hover:bg-gray-100 text-left">⭐ Star</button>
                       <button onClick={() => onPin(message)} className="block w-full px-4 py-2 hover:bg-gray-100 text-left">📌 Pin</button>
@@ -869,23 +887,23 @@ const [deleteModal, setDeleteModal] = useState<{
                           </button>
 
                           <button
-onClick={() => setDeleteModal({ messageId: message._id, forEveryone: true })}
-className="block w-full px-4 py-2 hover:bg-gray-100 text-left text-red-500"
+                            onClick={() => setDeleteModal({ messageId: message._id, forEveryone: true })}
+                            className="block w-full px-4 py-2 hover:bg-gray-100 text-left text-red-500"
                           >
                             🗑️ Delete for Everyone
                           </button>
                           <button
-  onClick={() => setDeleteModal({ messageId: message._id, forEveryone: false })}
-  className="block w-full px-4 py-2 hover:bg-gray-100 text-left text-red-500"
->
-  🗑️ Delete for Me
-</button>
+                            onClick={() => setDeleteModal({ messageId: message._id, forEveryone: false })}
+                            className="block w-full px-4 py-2 hover:bg-gray-100 text-left text-red-500"
+                          >
+                            🗑️ Delete for Me
+                          </button>
 
                         </>
                       ) : (
                         <button
-                        onClick={() => setDeleteModal({ messageId: message._id, forEveryone: false })}
-                        className="block w-full px-4 py-2 hover:bg-gray-100 text-left text-red-500"
+                          onClick={() => setDeleteModal({ messageId: message._id, forEveryone: false })}
+                          className="block w-full px-4 py-2 hover:bg-gray-100 text-left text-red-500"
                         >
                           🗑️ Delete for Me
                         </button>
@@ -929,18 +947,27 @@ className="block w-full px-4 py-2 hover:bg-gray-100 text-left text-red-500"
                             <EmojiPicker
                               height={400}
                               width="100%"
+                              theme="light"
                               onEmojiClick={(emojiObject) => {
                                 handleReaction(message._id, emojiObject.emoji);
                                 setEmojiPickerFor(null);
                               }}
                             />
+
                           </div>
                         )}
                       </div>
                     </div>
                   )}
                   {message.reactions && message.reactions.length > 0 && (
-                    <div className="absolute -bottom-4 left-2 flex space-x-1 bg-white px-2 py-1 rounded-full shadow border z-10">
+  <div
+    className={`absolute -bottom-4 ${
+      (message.sender?._id || message.sender?.id || message.sender) === currentUser.id
+        ? 'right-2'
+        : 'left-2'
+    } flex space-x-1 bg-white px-2 py-1 rounded-full shadow border z-10`}
+  >
+
                       {Array.from(new Set(message.reactions.map(r => r.emoji))).map((emoji) => (
                         <div
                           key={emoji}
@@ -953,8 +980,17 @@ className="block w-full px-4 py-2 hover:bg-gray-100 text-left text-red-500"
                     </div>
                   )}
                   {reactionPopupFor === message._id && (
-                    <div ref={reactionPopupRef} // ✅ Add this
-                      className="absolute -bottom-20 left-2 w-60 bg-white shadow-lg rounded-lg border p-3 z-20">
+  <div
+    ref={reactionPopupRef}
+    className={`absolute -bottom-20 ${
+      (message.sender?._id || message.sender?.id || message.sender) === currentUser.id
+        ? 'right-0'
+        : 'left-2'
+    } w-60 bg-white text-gray-800 shadow-lg rounded-lg border p-3 z-20`}
+>
+
+
+
                       <div className="text-sm font-medium border-b pb-1 mb-2">All Reactions</div>
                       {message.reactions.map((r) => {
                         const isYou = r.user === currentUser.id;
@@ -1003,7 +1039,6 @@ className="block w-full px-4 py-2 hover:bg-gray-100 text-left text-red-500"
           })}
       </div>
 
-
       {/* File Preview Before Sending */}
       {file && (
         <div className="flex items-center space-x-2 p-2 bg-gray-100 rounded-lg">
@@ -1042,7 +1077,7 @@ className="block w-full px-4 py-2 hover:bg-gray-100 text-left text-red-500"
 
       {/* Message Input */}
       <div className="p-4 border-t border-gray-200 bg-white flex items-center space-x-3 w-full">
-      <button onClick={() => setShowEmojiPicker(!showEmojiPicker)}><Smile className="w-6 h-6 text-gray-500" /></button>
+        <button onClick={() => setShowEmojiPicker(!showEmojiPicker)}><Smile className="w-6 h-6 text-gray-500" /></button>
         {showEmojiPicker && (
           <div className="absolute bottom-16 left-4 z-10 bg-white shadow-lg p-2 rounded-lg">
             <div className="flex justify-end mb-1">
@@ -1061,12 +1096,12 @@ className="block w-full px-4 py-2 hover:bg-gray-100 text-left text-red-500"
         <input type="file" ref={fileInputRef} hidden onChange={(e) => setFile(e.target.files?.[0] || null)} />
         <button onClick={() => fileInputRef.current?.click()}><Paperclip className="w-6 h-6 text-gray-500" /></button>
         <textarea
-    className="flex-1 border p-2 rounded-lg resize-none overflow-y-auto max-h-36 break-words whitespace-pre-wrap min-w-0"
-    value={newMessage}
-    onChange={(e) => setNewMessage(e.target.value)}
-    placeholder="Type a message..."
-    rows={1}
-  />
+          className="flex-1 border p-2 rounded-lg resize-none overflow-y-auto max-h-36 break-words whitespace-pre-wrap min-w-0"
+          value={newMessage}
+          onChange={(e) => setNewMessage(e.target.value)}
+          placeholder="Type a message..."
+          rows={1}
+        />
         <button
           onClick={handleSend}
           className="bg-indigo-600 text-white px-4 py-2 rounded-lg"
@@ -1084,44 +1119,131 @@ className="block w-full px-4 py-2 hover:bg-gray-100 text-left text-red-500"
             Cancel Edit
           </button>
         )}
-{showCopiedToast && (
-  <div className="fixed bottom-4 left-[65%] transform -translate-x-1/2 bg-black text-white px-4 py-2 rounded-lg shadow-lg text-sm z-50">
-    Message copied
-  </div>
-)}
+        {showCopiedToast && (
+          <div className="fixed bottom-4 left-[65%] transform -translate-x-1/2 bg-black text-white px-4 py-2 rounded-lg shadow-lg text-sm z-50">
+            Message copied
+          </div>
+        )}
 
 
       </div>
       {deleteModal && (
-  <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex items-center justify-center">
-    <div className="bg-white rounded-lg shadow-lg w-full max-w-sm p-6 space-y-4">
-      <h2 className="text-lg font-semibold">Delete this message?</h2>
-      <p className="text-sm text-gray-600">
-        {deleteModal.forEveryone
-          ? "This message will be deleted for everyone in the chat."
-          : "This message will be deleted only from your device."}
-      </p>
+        <div className="fixed inset-0 bg-black bg-opacity-40 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-sm p-6 space-y-4">
+            <h2 className="text-lg font-semibold">Delete this message?</h2>
+            <p className="text-sm text-gray-600">
+              {deleteModal.forEveryone
+                ? "This message will be deleted for everyone in the chat."
+                : "This message will be deleted only from your device."}
+            </p>
 
-      <div className="flex justify-end space-x-3">
-        <button
-          onClick={() => setDeleteModal(null)}
-          className="bg-gray-200 text-gray-700 px-4 py-2 rounded hover:bg-gray-300"
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setDeleteModal(null)}
+                className="bg-gray-200 text-gray-700 px-4 py-2 rounded hover:bg-gray-300"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  handleDeleteMessage(deleteModal.messageId, deleteModal.forEveryone);
+                  setDeleteModal(null);
+                }}
+                className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ==== IMAGE PREVIEW MODAL ==== */}
+      {previewImageUrl && (
+        <div className="fixed inset-0 bg-black bg-opacity-80 z-50 flex items-center justify-center">
+          <div className="relative">
+            <img src={previewImageUrl} className="max-w-[90vw] max-h-[90vh] rounded shadow-lg" />
+            <button
+              onClick={closeImageModal}
+              className="absolute top-2 right-2 bg-white text-black px-2 py-1 rounded shadow"
+            >
+              ✕
+            </button>
+            <a
+              href={previewImageUrl}
+              download
+              className="absolute bottom-2 right-2 bg-white text-black px-2 py-1 rounded shadow"
+            >
+              ⬇️ Download
+            </a>
+          </div>
+        </div>
+      )}
+
+{imagePreview && (
+  <div className="fixed inset-0 z-50 bg-black bg-opacity-70 flex items-center justify-center p-4">
+    <div className="relative max-w-5xl w-full max-h-full flex flex-col items-center">
+
+      {/* Top-right buttons */}
+      <div className="absolute top-4 right-4 flex space-x-2 z-50">
+        <a
+          href={imagePreview.url}
+          download={imagePreview.filename}
+          className="bg-white px-3 py-1 text-sm rounded shadow hover:bg-gray-100"
         >
-          Cancel
-        </button>
+          ⬇️ Download
+        </a>
         <button
-          onClick={() => {
-            handleDeleteMessage(deleteModal.messageId, deleteModal.forEveryone);
-            setDeleteModal(null);
-          }}
-          className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+          onClick={() => setImagePreview(null)}
+          className="bg-white px-3 py-1 text-sm rounded shadow hover:bg-gray-100"
         >
-          Delete
+          ✕
         </button>
       </div>
+
+      {/* Zoom Controls */}
+      <div className="absolute top-5 left-5 z-50 flex items-center space-x-3 bg-white bg-opacity-80 rounded-full px-4 py-1 shadow-lg">
+  <button
+    onClick={() => setZoom(prev => Math.max(prev - 0.2, 0.2))}
+    className="text-gray-800 hover:text-indigo-600 text-xl"
+    title="Zoom Out"
+  >
+    🔍➖
+  </button>
+  <button
+    onClick={() => setZoom(1)}
+    className="text-gray-800 hover:text-indigo-600 text-sm font-semibold border border-gray-400 px-2 py-1 rounded"
+    title="Reset Zoom (1:1)"
+  >
+    🔁1:1
+  </button>
+  <button
+    onClick={() => setZoom(prev => Math.min(prev + 0.2, 5))}
+    className="text-gray-800 hover:text-indigo-600 text-xl"
+    title="Zoom In"
+  >
+    🔍➕
+  </button>
+</div>
+
+
+      {/* Image Container */}
+      <div className="overflow-auto max-h-[80vh] rounded border border-white p-2">
+        <img
+          src={imagePreview.url}
+          alt="Preview"
+          style={{ transform: `scale(${zoom})` }}
+          className="transition-transform duration-200 max-h-[80vh] max-w-full object-contain"
+        />
+      </div>
+
+      {/* Filename Below */}
+      <p className="text-white text-sm mt-4 truncate max-w-[80vw] text-center">
+        {imagePreview.filename}
+      </p>
     </div>
   </div>
 )}
+
 
     </div>
   );
