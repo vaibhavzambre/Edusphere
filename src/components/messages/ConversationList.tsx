@@ -1,9 +1,12 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef,useImperativeHandle, forwardRef} from "react";
 import { Search, MoreVertical, X } from "lucide-react";
 import axios from "axios";
 import { useAuth } from "../../context/AuthContext";
 import type { Conversation, User } from "../../types";
 import io from "socket.io-client";
+import { toast } from "react-hot-toast";
+import type { ChatWindowRef } from "./ChatWindow"; // ✅ Adjust path if needed
+
 const socket = io("http://localhost:5001"); // adjust if needed
 
 interface ConversationWithUnread extends Conversation {
@@ -23,6 +26,9 @@ interface ConversationListProps {
   selectedConversationId?: string;
   // If you want to update conversation list from inside, you can pass a setter:
   setConversations?: React.Dispatch<React.SetStateAction<Conversation[]>>;
+  chatWindowRef: React.RefObject<ChatWindowRef>;
+  fetchConversations?: () => Promise<Conversation[] | undefined>;  // <-- NEW
+
 }
 
 export default function ConversationList({
@@ -30,9 +36,12 @@ export default function ConversationList({
   onSelectConversation,
   selectedConversationId,
   setConversations,
+  chatWindowRef,
+  fetchConversations
 }: ConversationListProps) {
   const { user } = useAuth();
   const currentUserId = user?.id || user?._id;
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
 
   // ----------------------------------------
   // 1) Searching for direct chat
@@ -42,7 +51,21 @@ export default function ConversationList({
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
   const searchRef = useRef<HTMLDivElement>(null);
-
+  const [confirmationModal, setConfirmationModal] = useState<{
+    action: "clear" | "delete" | "exit";
+    conversationId: string;
+  } | null>(null);
+  
+  const getTime = (msg: any, currentUserId: string): number => {
+    if (!msg) return 0;
+  
+    const isDeleted = msg.deletedBy?.includes(currentUserId);
+    if (isDeleted) return -1; // ⚠️ Return -1 instead of 0 to push it to the bottom
+  
+    return new Date(msg.timestamp).getTime();
+  };
+  
+  
   // ----------------------------------------
   // 2) "New Group" Modal
   // ----------------------------------------
@@ -52,6 +75,7 @@ export default function ConversationList({
   const [groupName, setGroupName] = useState("");
   const [classesList, setClassesList] = useState<ClassData[]>([]);
   const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
+  const [chatWindowVersion, setChatWindowVersion] = useState(0);
 
   // "Add Individual" sub-modal
   const [showAddParticipantsModal, setShowAddParticipantsModal] = useState(false);
@@ -59,13 +83,146 @@ export default function ConversationList({
   const [participantSearch, setParticipantSearch] = useState("");
   const [filteredAppUsers, setFilteredAppUsers] = useState<User[]>([]);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const stripDeletedLastMessage = (convs: Conversation[]) => {
+    return convs.map((c) => {
+      const msg = c.lastMessage;
+      const isDeleted = msg?.deletedBy?.includes(currentUserId);
+      return {
+        ...c,
+        lastMessage: isDeleted ? undefined : msg,
+      };
+    });
+  };
+  
+  useEffect(() => {
+  socket.on("connect", () => {
+    console.log("ConversationList: Socket connected with id whats", socket.id);
+  });
+  return () => {
+    socket.off("connect");
+  };
+}, []);
+// useEffect(() => {
+//   const handleDebugMessagesCleared = (data: any) => {
+//     console.log("ConversationList: Received messagesCleared event:", data);
+//   };
+  
+//   socket.on("messagesCleared", handleDebugMessagesCleared);
+//   console.log("ConversationList: messagesCleared listener registered.");
+  
+//   return () => {
+//     socket.off("messagesCleared", handleDebugMessagesCleared);
+//     console.log("ConversationList: messagesCleared listener unregistered.");
+//   };
+// }, []);
 
+  
   // ----------------------------------------
   // 3) More options (the three-dot button)
   // ----------------------------------------
   const [optionsVisible, setOptionsVisible] = useState(false);
   const optionsRef = useRef<HTMLDivElement>(null);
-
+  const handleClearMessages = async (conversationId: string) => {
+    const token = localStorage.getItem("token");
+    try {
+      // 1. Clear messages on the backend
+      await axios.put(
+        `http://localhost:5001/api/messages/clear/${conversationId}`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      console.log("ConversationList: Backend clear successful for conversation", conversationId);
+  
+      // 2. Refetch the conversation list
+      if (fetchConversations) {
+        await fetchConversations();
+      } else if (setConversations) {
+        // Fallback: update lastMessage to undefined
+        setConversations((prev) =>
+          [...prev.map((c) =>
+            (c._id || c.id) === conversationId ? { ...c, lastMessage: undefined } : c
+          )].sort((a, b) => getTime(b.lastMessage) - getTime(a.lastMessage))
+        );
+        
+      }
+      console.log("ConversationList: Conversations refetched");
+  
+      // 3. If this is the active conversation, call fetchMessages via ref
+      if (selectedConversationId === conversationId) {
+        console.log("ConversationList: Active conversation cleared. Calling chatWindowRef.fetchMessages()");
+        chatWindowRef.current?.fetchMessages();
+        // Force a remount via the version state; assume you have a prop function to update the version from the parent.
+        // For instance, if you pass a function from Messages.tsx for updating chatWindowVersion, call that here.
+        // Otherwise, you can handle this in the parent after refetch.
+        // For demonstration:
+        window.dispatchEvent(new Event("forceChatWindowRemount"));
+      } else {
+        console.log("ConversationList: Cleared conversation is not the active one.");
+      }
+      console.log("ConversationList: Emitting messagesCleared for conversation", conversationId);
+      socket.emit("messagesCleared", { conversationId });
+      toast.success("Messages cleared successfully.");
+    } catch (err) {
+      console.error("ConversationList: Error clearing messages:", err);
+      toast.error("Failed to clear messages.");
+    }
+  };
+  
+  
+  const handleDeleteChat = async (conversationId: string) => {
+    const token = localStorage.getItem("token");
+    try {
+      await axios.delete(
+        `http://localhost:5001/api/messages/conversation/${conversationId}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (setConversations) {
+        setConversations((prev) =>
+          prev.filter((c) => c._id !== conversationId)
+        );
+      }
+      toast.success("Chat deleted successfully.");
+    } catch (err) {
+      console.error("Error deleting chat:", err);
+      toast.error("Failed to delete chat.");
+    }
+  };
+  
+  
+  
+  const handleExitGroup = async (conversationId: string) => {
+    const token = localStorage.getItem("token");
+    try {
+      await axios.put(
+        `http://localhost:5001/api/messages/conversations/group/${conversationId}/exit`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      
+      if (setConversations) {
+        setConversations((prev) =>
+          prev.filter((c) => c._id !== conversationId)
+        );
+      }
+      toast.success("Exited group successfully.");
+    } catch (err) {
+      console.error("Error exiting group:", err);
+      toast.error("Failed to exit group.");
+    }
+  };
+  
+  
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest(".dropdown-trigger")) {
+        setOpenDropdownId(null);
+      }
+    };
+    document.addEventListener("click", handleOutsideClick);
+    return () => document.removeEventListener("click", handleOutsideClick);
+  }, []);
+  
   // ----------------------------------------
   // 4) useEffect: fetch data
   // ----------------------------------------
@@ -119,51 +276,45 @@ export default function ConversationList({
       setFilteredUsers([]);
     }
   }, [searchQuery, allUsers]);
-
-  const handleSelectUser = async (selectedUser: User) => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
-
-    try {
-      const res = await axios.post(
-        "http://localhost:5001/api/messages/find-or-create",
-        { participantId: selectedUser._id },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      const oneToOneConversation: Conversation = res.data;
-
-      // Update the conversation list:
-      if (setConversations) {
-        setConversations((prev) => {
-          // Remove any existing 1-1 conversation between these two users
-          const filtered = prev.filter(
-            (c) =>
-              !(
-                c.isGroup === false &&
-                c.participants.length === 2 &&
-                c.participants.some(
-                  (p) =>
-                    (p._id || p.id).toString() === selectedUser._id.toString()
-                )
-              )
-          );
-          return [oneToOneConversation, ...filtered];
-        });
-      }
-
-      // Immediately force the selected conversation to be the 1-1 conversation
-      onSelectConversation(oneToOneConversation);
-    } catch (error) {
-      console.error("Failed to get or create 1-1 conversation:", error);
-    } finally {
-      setSearchDropdownVisible(false);
-      setSearchQuery("");
+  const handleSelectUser = (selectedUser: User) => {
+    // Step 1: Check if a 1-to-1 conversation already exists with this user
+    const existing = conversations.find(
+      (conv) =>
+        !conv.isGroup &&
+        conv.participants.length === 2 &&
+        conv.participants.some((p) => (p as any)?._id === selectedUser._id)
+    );
+  
+    if (existing && existing.lastMessage) {
+      // ✅ Use the real existing conversation
+      onSelectConversation(existing);
+    } else {
+      // ❌ No existing conversation → open a temp conversation (not created yet)
+      const tempId = `new-${selectedUser._id}`;
+      const normalizeUser = (u: any) => ({
+        ...(u._id ? { _id: u._id } : { id: u.id }),
+        name: u.name,
+        email: u.email,
+        avatar: u.avatar,
+        role: u.role,
+      });
+      
+      const tempConversation: Conversation = {
+        id: tempId,
+        _id: tempId,
+        isGroup: false,
+        participants: [normalizeUser(user), normalizeUser(selectedUser)],
+        lastMessage: null,
+      };
+      
+  
+      onSelectConversation(tempConversation);
     }
+  
+    setSearchDropdownVisible(false);
+    setSearchQuery("");
   };
-
-
-  // ----------------------------------------
+  
   // 6) Group Creation
   // ----------------------------------------
   // 6A) Fetch classes
@@ -268,18 +419,25 @@ export default function ConversationList({
   useEffect(() => {
     socket.on("newMessage", (message) => {
       if (setConversations) {
-        setConversations((prev) =>
-          prev.map((c) => {
+        setConversations((prev) => {
+          const updated = prev.map((c) => {
             if (c._id === message.conversationId) {
+              const isDeleted = message.deletedBy?.includes(currentUserId);
               return {
                 ...c,
                 unreadCount: c._id === selectedConversationId ? 0 : (c.unreadCount || 0) + 1,
-                lastMessage: message,
+                lastMessage: isDeleted ? undefined : message,
               };
             }
             return c;
-          })
-        );
+          });
+        
+          return [...updated].sort(
+            (a, b) => getTime(b.lastMessage, currentUserId) - getTime(a.lastMessage, currentUserId)
+          );
+                  });
+        
+        
       }
     });
 
@@ -290,6 +448,7 @@ export default function ConversationList({
             c._id === conversationId ? { ...c, unreadCount: 0 } : c
           )
         );
+        
       }
     });
 
@@ -409,16 +568,14 @@ export default function ConversationList({
 
                     // ✅ Update conversation unread count + re-sort
                     setConversations((prev) => {
-                      const updated = prev.map((c) =>
-                        c._id === conversation._id ? { ...c, unreadCount: 0 } : c
-                      );
+  const updated = prev.map((c) =>
+    c._id === conversation._id ? { ...c, unreadCount: 0 } : c
+  );
+  return [...updated].sort(
+    (a, b) => getTime(b.lastMessage, currentUserId) - getTime(a.lastMessage, currentUserId)
+  );
+  });
 
-                      return [...updated].sort((a, b) => {
-                        const aTime = new Date(a.lastMessage?.timestamp || 0).getTime();
-                        const bTime = new Date(b.lastMessage?.timestamp || 0).getTime();
-                        return bTime - aTime;
-                      });
-                    });
                   } catch (err) {
                     console.error("❌ Failed to mark messages as read:", err);
                   }
@@ -469,26 +626,99 @@ export default function ConversationList({
                   </div>
 
 
-                  {conversation.lastMessage?.timestamp && (
-                    <span className="text-xs text-gray-500">
-                      {new Date(conversation.lastMessage.timestamp).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
-                  )}
+                  {conversation.lastMessage &&
+  !conversation.lastMessage.deletedBy?.includes(currentUserId) && (
+    <span className="text-xs text-gray-500">
+      {new Date(conversation.lastMessage.timestamp).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      })}
+    </span>
+)}
+
                 </div>
 
                 <p className="text-sm text-gray-500 truncate">
-                  {!conversation.lastMessage
-                    ? "No messages yet"
-                    : conversation.lastMessage.isDeletedForEveryone
-                      ? "🗑️ Message deleted"
-                      : conversation.lastMessage.file
-                        ? "📎 Sent an attachment"
-                        : conversation.lastMessage.content || "—"}
-                </p>
+  {!conversation.lastMessage ||
+  conversation.lastMessage.deletedBy?.includes(currentUserId)
+    ? "No messages yet"
+    : conversation.lastMessage.isDeletedForEveryone
+      ? "🗑️ Message deleted"
+      : conversation.lastMessage.file
+        ? "📎 Sent an attachment"
+        : conversation.lastMessage.content || "—"}
+</p>
+
               </div>
+              <div className="relative ml-2">
+  <button
+    onClick={(e) => {
+      e.stopPropagation(); // Prevent selecting conversation
+      setOpenDropdownId((prev) =>
+        prev === (conversation._id || conversation.id) ? null : (conversation._id || conversation.id)
+      );
+    }}
+    className="p-1 hover:bg-gray-200 rounded-full"
+  >
+    <MoreVertical size={16} />
+  </button>
+
+  {openDropdownId === (conversation._id || conversation.id) && (
+    <div className="absolute right-0 top-6 bg-white border shadow-md rounded w-40 z-50">
+      {!isGroup ? (
+        <>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setConfirmationModal({ action: "clear", conversationId: conversation._id });
+              setOpenDropdownId(null);
+            }}
+            
+            className="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm"
+          >
+            🧹 Clear Messages
+          </button>
+          <button
+onClick={(e) => {
+  e.stopPropagation();
+  setConfirmationModal({ action: "delete", conversationId: conversation._id });
+  setOpenDropdownId(null);
+}}
+
+            className="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm text-red-600"
+          >
+            ❌ Delete Chat
+          </button>
+        </>
+      ) : (
+        <>
+          <button
+onClick={(e) => {
+  e.stopPropagation();
+  setConfirmationModal({ action: "clear", conversationId: conversation._id });
+  setOpenDropdownId(null);
+}}
+
+            className="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm"
+          >
+            🧹 Clear Messages
+          </button>
+          <button
+onClick={(e) => {
+  e.stopPropagation();
+  setConfirmationModal({ action: "exit", conversationId: conversation._id });
+  setOpenDropdownId(null);
+}}
+
+            className="w-full text-left px-4 py-2 hover:bg-gray-100 text-sm text-red-600"
+          >
+            🚪 Exit Group
+          </button>
+        </>
+      )}
+    </div>
+  )}
+</div>
 
             </button>
           );
@@ -656,6 +886,83 @@ export default function ConversationList({
           </div>
         </div>
       )}
+{confirmationModal && (
+  <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
+      <div className="p-6 space-y-4">
+        <div className="flex items-center space-x-3">
+          <div className={`p-2 rounded-lg ${
+            confirmationModal.action === "clear" ? "bg-blue-100 text-blue-600" :
+            confirmationModal.action === "delete" ? "bg-red-100 text-red-600" :
+            "bg-orange-100 text-orange-600"
+          }`}>
+            {confirmationModal.action === "clear" && (
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            )}
+            {confirmationModal.action === "delete" && (
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            )}
+            {confirmationModal.action === "exit" && (
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+            )}
+          </div>
+          <h2 className="text-xl font-semibold text-gray-900">
+            {confirmationModal.action === "clear" && "Clear All Messages"}
+            {confirmationModal.action === "delete" && "Delete Conversation"}
+            {confirmationModal.action === "exit" && "Leave Group"}
+          </h2>
+        </div>
+
+        <p className="text-gray-600 text-sm leading-relaxed">
+          {confirmationModal.action === "clear" &&
+            "This will permanently remove all messages from your view. Other participants will still see the conversation history."}
+          {confirmationModal.action === "delete" &&
+            "Permanently delete this conversation and remove it from your chat list. This action cannot be undone."}
+          {confirmationModal.action === "exit" &&
+            "You will no longer receive messages from this group. To rejoin, someone must invite you again."}
+        </p>
+      </div>
+
+      <div className="bg-gray-50 px-6 py-4 flex justify-end space-x-3">
+        <button
+          onClick={() => setConfirmationModal(null)}
+          className="px-5 py-2 text-gray-700 hover:text-gray-900 font-medium rounded-lg hover:bg-gray-100 transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={async () => {
+            const { action, conversationId } = confirmationModal;
+            if (action === "clear") await handleClearMessages(conversationId);
+            else if (action === "delete") await handleDeleteChat(conversationId);
+            else if (action === "exit") await handleExitGroup(conversationId);
+            setConfirmationModal(null);
+          }}
+          className={`px-5 py-2 font-medium rounded-lg transition-colors ${
+            confirmationModal.action === "exit" 
+              ? "bg-orange-600 hover:bg-orange-700 text-white"
+              : "bg-red-600 hover:bg-red-700 text-white"
+          }`}
+        >
+          {confirmationModal.action === "clear" && "Clear All"}
+          {confirmationModal.action === "delete" && "Delete Forever"}
+          {confirmationModal.action === "exit" && "Leave Group"}
+        </button>
+      </div>
     </div>
-  );
+  </div>
+)}
+
+    </div>
+  
+
+);
+
+  
 }

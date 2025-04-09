@@ -41,6 +41,9 @@ export interface Message {
   content: string;
   timestamp: string;
   read: boolean;
+  deletedBy?: string[]; // ✅ ADD THIS
+  isDeletedForEveryone?: boolean; // ✅ ADD THIS
+
   attachments?: {
     id: string;
     name: string;

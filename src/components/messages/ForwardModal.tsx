@@ -6,15 +6,14 @@ import { Message } from "../../types"; // ✅ Add this
 interface ForwardModalProps {
   // messageContent: string;
   currentUser: any;
-  message: Message;
-
+  messages: Message[]; // ⬅️ Change from a single message
   onClose: () => void;
   setSelectedConversation: (c: Conversation) => void;
 }
 
 export default function ForwardModal({
-message,
-  currentUser,
+  messages,
+    currentUser,
   onClose,
   setSelectedConversation,
 }: ForwardModalProps) {
@@ -70,48 +69,51 @@ message,
 
     for (const id of selectedIds) {
       const isGroup = id.startsWith("group-");
-
+    
       if (isGroup) {
         const convoId = id.replace("group-", "");
-        await axios.post(
-          "http://localhost:5001/api/messages/send",
-          {
+    
+        for (const msg of messages) {
+          await axios.post("http://localhost:5001/api/messages/send", {
             conversationId: convoId,
-            content: message.content,
-            file: message.file || null, // ✅ include file if any
-          },
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        
-
+            content: msg.content,
+            file: msg.file || null,
+          }, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+        }
+    
         if (isSingle) {
           const convo = await axios.get(`http://localhost:5001/api/messages/conversations/${convoId}`, {
             headers: { Authorization: `Bearer ${token}` },
           });
           setSelectedConversation(convo.data);
         }
+    
       } else {
-        const res = await axios.post(
-          "http://localhost:5001/api/messages/find-or-create",
-          { participantId: id },
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
+        const res = await axios.post("http://localhost:5001/api/messages/find-or-create", {
+          participantId: id,
+        }, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+    
         const convo = res.data;
-
-        await axios.post(
-          "http://localhost:5001/api/messages/send",
-          {
+    
+        for (const msg of messages) {
+          await axios.post("http://localhost:5001/api/messages/send", {
             conversationId: convo._id,
             receiver: id,
-            content: message.content
-            ,
-          },
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-
+            content: msg.content,
+            file: msg.file || null,
+          }, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+        }
+    
         if (isSingle) setSelectedConversation(convo);
       }
     }
+    
 
     setForwarded(true);
     setTimeout(() => {

@@ -23,11 +23,11 @@ replyTo: {
 },
 // In Message.js (Mongoose model)
 // In models/Conversation.js
-pinnedMessage: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: 'Message',
-  default: null,
-},
+// pinnedMessage: {
+//   type: mongoose.Schema.Types.ObjectId,
+//   ref: 'Message',
+//   default: null,
+// },
 
 reactions: [
   {

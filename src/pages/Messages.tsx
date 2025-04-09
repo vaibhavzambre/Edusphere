@@ -2,8 +2,9 @@ import React, { useState, useEffect } from "react";
 import io from "socket.io-client";
 import axios from "axios";
 import ConversationList from "../components/messages/ConversationList";
-import ChatWindow from "../components/messages/ChatWindow";
+import ChatWindow,{ ChatWindowRef }  from "../components/messages/ChatWindow";
 import { Conversation, Message } from "../types";
+import { useRef } from "react";
 
 const socket = io("http://localhost:5001");
 const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
@@ -14,15 +15,27 @@ export default function Messages() {
   const [replyToMessage, setReplyToMessage] = useState<Message | null>(null);
   const [searchParams] = useSearchParams();
   const conversationIdFromUrl = searchParams.get("conversationId");
-  
+  const chatWindowRef = useRef<ChatWindowRef>(null);
+
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [chatWindowVersion, setChatWindowVersion] = useState(0);
 
   // ✅ FLAG: to track if we just sent a message to create a new conversation
   const [wasNewConversationSent, setWasNewConversationSent] = useState(false);
   const [prefilledMessage, setPrefilledMessage] = useState<string>("");
+  useEffect(() => {
+    const forceRemountHandler = () => {
+      setChatWindowVersion(prev => prev + 1);
+    };
+    window.addEventListener("forceChatWindowRemount", forceRemountHandler);
+    return () => {
+      window.removeEventListener("forceChatWindowRemount", forceRemountHandler);
+    };
+  }, []);
+  
   useEffect(() => {
     if (conversationIdFromUrl && conversations.length > 0) {
       const found = conversations.find(c => c._id === conversationIdFromUrl);
@@ -31,7 +44,42 @@ export default function Messages() {
       }
     }
   }, [conversationIdFromUrl, conversations]);
+  useEffect(() => {
+    const handleMessagesCleared = (data: any) => {
+      // Normalize payload—data is an object { conversationId: ... }
+      const convId = typeof data === "string" ? data : data.conversationId;
+      console.log("Messages.tsx: messagesCleared event received:", data);
+      console.log("Messages.tsx: Extracted conversationId:", convId);
   
+      // Refetch conversations first
+      fetchConversations()
+        .then(() => {
+          // Then, if the cleared conversation is the one open, refresh its messages.
+          if (
+            selectedConversation &&
+            ((selectedConversation._id || selectedConversation.id) === convId)
+          ) {
+            console.log("Messages.tsx: Active conversation cleared. Calling fetchMessages()");
+            chatWindowRef.current?.fetchMessages();
+          } else {
+            console.log("Messages.tsx: Cleared conversation does not match active conversation.");
+          }
+        })
+        .catch((err) => {
+          console.error("Messages.tsx: Error refetching conversations:", err);
+        });
+    };
+  
+    socket.on("messagesCleared", handleMessagesCleared);
+    console.log("Messages.tsx: messagesCleared listener registered.");
+  
+    return () => {
+      socket.off("messagesCleared", handleMessagesCleared);
+      console.log("Messages.tsx: messagesCleared listener unregistered.");
+    };
+  }, [selectedConversation]);
+  
+
   const refetchSingleConversation = async (conversationId: string) => {
     try {
       const token = localStorage.getItem("token");
@@ -84,7 +132,43 @@ export default function Messages() {
       setLoading(false);
     }
   };
-
+  // useEffect(() => {
+  //   const handleMessagesCleared = (data: any) => {
+  //     console.log("Socket event 'messagesCleared' received with data:", data);
+  //     // Normalize data to an object with conversationId
+  //     const conversationId = typeof data === "string" ? data : data.conversationId;
+  //     console.log("Extracted conversationId:", conversationId);
+  //     console.log("Current selectedConversation:", selectedConversation);
+  
+  //     // First, refresh the conversation list
+  //     fetchConversations()
+  //       .then(() => {
+  //         // Then, if the cleared conversation is currently open, refresh its messages
+  //         if (selectedConversation && selectedConversation._id === conversationId) {
+  //           console.log(
+  //             "Selected conversation matches cleared conversation. Calling fetchMessages() now."
+  //           );
+  //           chatWindowRef.current?.fetchMessages?.();
+  //         } else {
+  //           console.log(
+  //             "Cleared conversation does not match the currently selected conversation."
+  //           );
+  //         }
+  //       })
+  //       .catch((err) => {
+  //         console.error("Error in fetchConversations() within messagesCleared handler:", err);
+  //       });
+  //   };
+  
+  //   socket.on("messagesCleared", handleMessagesCleared);
+  //   // console.log("messagesCleared event listener registered in Messages.tsx");
+  
+  //   return () => {
+  //     socket.off("messagesCleared", handleMessagesCleared);
+  //     console.log("messagesCleared event listener unregistered from Messages.tsx");
+  //   };
+  // }, [selectedConversation]);
+  
   // ✅ Listen to Socket events
   useEffect(() => {
     fetchConversations();
@@ -95,6 +179,7 @@ export default function Messages() {
       // Refresh just that conversation
       refetchSingleConversation(conversationId);
     });
+    socket.on("messagesCleared", refresh);
     
     socket.on("newMessage", refresh);
     socket.on("messageEdited", refresh);
@@ -180,12 +265,15 @@ export default function Messages() {
             onSelectConversation={setSelectedConversation}
             selectedConversationId={selectedConversation?._id || selectedConversation?.id}
             setConversations={setConversations}
+            fetchConversations={fetchConversations} 
+            chatWindowRef={chatWindowRef}   // <-- Add this line
+
           />
 
           {selectedConversation ? (
            <ChatWindow
-  key={selectedConversation._id || selectedConversation.id}
-  conversation={selectedConversation}
+           key={`${selectedConversation._id}-${chatWindowVersion}`}
+           conversation={selectedConversation}
   authUser={currentUser}
   onSendMessage={handleSendMessage}
   prefilledMessage={prefilledMessage}
@@ -193,8 +281,11 @@ export default function Messages() {
   setPrefilledMessage={setPrefilledMessage}
   replyToMessage={replyToMessage}                     // ✅ NEW
   setReplyToMessage={setReplyToMessage}  
-  fetchConversations={fetchConversations}  // ✅ NEW
+  fetchConversations={fetchConversations}
   conversations={conversations} // ✅ Add this
+  chatWindowRef={chatWindowRef} // ✅ PASS THE REF!
+
+
 />
 
 

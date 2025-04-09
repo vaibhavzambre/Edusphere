@@ -1,10 +1,12 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, {
+  useEffect, useCallback, useState, useRef, useImperativeHandle, forwardRef
+} from "react";
 import {
   Paperclip,
   Send,
   Smile,
   Edit,
-  Trash2,
+  
   FileText,
   Image,
   Video,
@@ -18,6 +20,10 @@ import EmojiPicker from "emoji-picker-react"; // ✅ Make sure this library is i
 import type { Conversation, Message } from "../../types";
 import GroupInfoPanel from "./GroupInfoPanel"; // or correct path
 import { File } from "lucide-react";
+import Linkify from "linkify-react";
+import UserInfoPanel from "./UserInfoPanel";
+import { Trash2, Forward, X } from "lucide-react";
+import MultiDeleteModal from "./MultiDeleteModal"; // adjust path if needed
 
 interface ChatWindowProps {
   conversation: Conversation | null;
@@ -29,24 +35,34 @@ interface ChatWindowProps {
   replyToMessage?: Message | null;               // ✅ NEW
   setReplyToMessage?: (msg: Message | null) => void; // ✅ NEW
   fetchConversations: () => void; // ✅ NEW
+  conversations: Conversation[];
 
 }
 
+export interface ChatWindowRef {
+  fetchMessages: () => void;
+}
 
 const socket = io("http://localhost:5001");
 
-export default function ChatWindow({
-  conversation,
-  onSendMessage,
-  authUser,  // ✅ renamed
-  prefilledMessage,              // ✅ ADD THIS
-  setSelectedConversation,       // ✅ AND THIS
-  setPrefilledMessage,
-  replyToMessage,
-  setReplyToMessage,
-  fetchConversations // ✅ NEW
-  // ✅ AND THIS
-}: ChatWindowProps) {
+// export default function 
+const ChatWindow = forwardRef(function ChatWindow(
+  {
+    conversation,
+    onSendMessage,
+    authUser,
+    prefilledMessage,
+    setSelectedConversation,
+    setPrefilledMessage,
+    replyToMessage,
+    setReplyToMessage,
+    fetchConversations,
+    conversations, // ✅ ADD THIS
+
+  }: ChatWindowProps,
+  ref // ✅ Add this second argument
+) {
+
   const replyTo = replyToMessage;
   const setReplyTo = setReplyToMessage!;
 
@@ -75,7 +91,11 @@ export default function ChatWindow({
   const unreadMessageRef = useRef<HTMLDivElement>(null);
   const [firstUnreadMessageIndex, setFirstUnreadMessageIndex] = useState<number | null>(null);
   const lastMessageRef = useRef<HTMLDivElement>(null);
-
+  const [multiDeleteModal, setMultiDeleteModal] = useState<null | {
+    isMixed: boolean;
+    count: number;
+  }>(null);
+  
   const [pinnedMessage, setPinnedMessage] = useState<Message | null>(null);
   const pinnedMessageRef = useRef<HTMLDivElement>(null);
   const [showCopiedToast, setShowCopiedToast] = useState(false);
@@ -85,9 +105,14 @@ export default function ChatWindow({
   const [forwardMessage, setForwardMessage] = useState<Message | null>(null);
   const [allConversations, setAllConversations] = useState<Conversation[]>([]);
   const [selectedForwardConversationIds, setSelectedForwardConversationIds] = useState<string[]>([]);
-  const [messageToForward, setMessageToForward] = useState<Message | null>(null);
+  const [messageToForward, setMessageToForward] = useState<Message[] | null>(null);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<{ url: string; filename: string } | null>(null);
+  const [renderToggle, setRenderToggle] = useState(false);
+
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [selectedMessages, setSelectedMessages] = useState<Message[]>([]);
+
   const openImageModal = (url: string, filename: string) => {
     setImagePreview({ url, filename });
   };
@@ -95,7 +120,7 @@ export default function ChatWindow({
     setImagePreview(null);
     setZoom(1); // reset zoom on close
   };
-  
+
   const handleImagePreview = (url: string) => {
     setPreviewImageUrl(url);
   };
@@ -106,6 +131,16 @@ export default function ChatWindow({
     messageId: string;
     forEveryone: boolean;
   } | null>(null);
+
+  useEffect(() => {
+    socket.on("messagesCleared", (conversationId) => {
+      if (conversation?._id === conversationId) fetchMessages();
+    });
+    socket.emit("messagesCleared", { conversationId });
+    return () => {
+      socket.off("messagesCleared");
+    };
+  }, [conversation]);
 
   useEffect(() => {
     if (!loading && messages.length > 0) {
@@ -360,31 +395,81 @@ export default function ChatWindow({
 
 
   // ✅ Delete Message
-  const handleDeleteMessage = async (messageId: string, forEveryone: boolean = false) => {
+  // const handleDeleteMessage = async (messageId: string, forEveryone: boolean = false) => {
+  //   try {
+  //     await axios.put(
+  //       `http://localhost:5001/api/messages/delete/${messageId}`,
+  //       { forEveryone },
+  //       {
+  //         headers: {
+  //           Authorization: `Bearer ${token}`,
+  //         },
+  //       }
+  //     );
+
+  //     socket.emit("deleteMessage", { id: messageId, forEveryone, userId: currentUser.id });
+
+  //     if (forEveryone) {
+  //       setMessages((prev) => prev.filter((msg) => msg._id !== messageId));
+  //     } else {
+  //       setMessages((prev) =>
+  //         prev.filter((msg) => msg._id !== messageId || msg.deletedBy?.includes(currentUser.id))
+  //       );
+  //     }
+  //   } catch (error) {
+  //     console.error("❌ Failed to delete message:", error);
+  //   }
+  // };
+  const handleDeleteMessage = async (ids: string | string[], forEveryone = false) => {
+    const messageIds = Array.isArray(ids) ? ids : [ids];
     try {
-      await axios.put(
-        `http://localhost:5001/api/messages/delete/${messageId}`,
-        { forEveryone },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
-
-      socket.emit("deleteMessage", { id: messageId, forEveryone, userId: currentUser.id });
-
-      if (forEveryone) {
-        setMessages((prev) => prev.filter((msg) => msg._id !== messageId));
-      } else {
-        setMessages((prev) =>
-          prev.filter((msg) => msg._id !== messageId || msg.deletedBy?.includes(currentUser.id))
-        );
-      }
+      await Promise.all(messageIds.map((messageId) =>
+        axios.put(`http://localhost:5001/api/messages/delete/${messageId}`, { forEveryone }, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+      ));
+  
+      socket.emit("deleteMessage", {
+        ids: messageIds,
+        forEveryone,
+        userId: currentUser.id
+      });
+  
+      setMessages((prev) => prev.filter((msg) => !messageIds.includes(msg._id)));
+      setSelectedMessages([]);
+      setIsSelecting(false);
     } catch (error) {
-      console.error("❌ Failed to delete message:", error);
+      console.error("❌ Failed to delete messages:", error);
     }
   };
+  // ✅ NEW: Delete only for self (for mixed sender/receiver messages)
+const handleDeleteOnlyForMe = async (ids: string | string[]) => {
+  const messageIds = Array.isArray(ids) ? ids : [ids];
+  try {
+    await Promise.all(
+      messageIds.map((messageId) =>
+        axios.put(
+          `http://localhost:5001/api/messages/delete/${messageId}`,
+          { forEveryone: false },
+          { headers: { Authorization: `Bearer ${token}` } }
+        )
+      )
+    );
+
+    // Emit socket event
+    socket.emit("deleteMessage", {
+      ids: messageIds,
+      forEveryone: false,
+      userId: currentUser.id,
+    });
+
+    setMessages((prev) => prev.filter((msg) => !messageIds.includes(msg._id)));
+    setSelectedMessages([]);
+    setIsSelecting(false);
+  } catch (error) {
+    console.error("❌ Failed to delete (only for me):", error);
+  }
+};
 
   useEffect(() => {
     if (conversation?._id) {
@@ -407,9 +492,15 @@ export default function ChatWindow({
   useEffect(() => {
     if (conversation) {
       fetchMessages();
+      fetchPinnedMessage(); // ✅ ADD THIS
+
       socket.emit("join", currentUser.id);
       socket.emit("joinConversation", conversation._id);
     }
+
+    socket.on("messagesCleared", (conversationId) => {
+      if (conversation?._id === conversationId) fetchMessages();
+    });
 
     // ✅ All these are needed
     socket.on("messageReacted", (updatedMsg: Message) => {
@@ -446,17 +537,25 @@ export default function ChatWindow({
 
 
 
-    socket.on("messageDeleted", ({ id }) => {
-      setMessages((prevMessages) =>
-        prevMessages.filter((msg) => msg._id !== id)
-      );
-
-      const latestMessages = messagesRef.current;
-      const isLast = latestMessages.length > 0 && latestMessages[latestMessages.length - 1]._id === id;
-      if (isLast) {
-        fetchConversations();
+    socket.on("messageDeleted", ({ id, forEveryone, userId }) => {
+      // Only delete from UI if:
+      // - Message was deleted for everyone, OR
+      // - Message was deleted by *me* (current user)
+      if (forEveryone || userId === currentUser.id) {
+        setMessages((prevMessages) =>
+          prevMessages.filter((msg) => msg._id !== id)
+        );
+    
+        const latestMessages = messagesRef.current;
+        const isLast =
+          latestMessages.length > 0 &&
+          latestMessages[latestMessages.length - 1]._id === id;
+        if (isLast) {
+          fetchConversations();
+        }
       }
     });
+    
 
     socket.on("pinnedMessageUpdated", (msg) => setPinnedMessage(msg));
 
@@ -487,22 +586,16 @@ export default function ChatWindow({
     };
   }, [conversation]);
 
-
-  // ✅ Fetch messages from the backend
-  const fetchMessages = async () => {
-    // In fetchMessages:
+  const fetchMessages = useCallback(async () => {
     if (!conversation?._id) {
-      setLoading(false);
       setMessages([]);
+      setLoading(false);
       return;
     }
 
-    try {
-      if (!token) {
-        setError("No authentication token found.");
-        return;
-      }
+    console.log("✅ Fetching messages for:", conversation._id);
 
+    try {
       const response = await axios.get(
         `http://localhost:5001/api/messages/conversation/${conversation._id}`,
         {
@@ -511,32 +604,43 @@ export default function ChatWindow({
           },
         }
       );
+      console.log("✅ New messages fetched:", response.data);
 
-      setMessages(response.data);
-      // After setMessages(response.data);
+      setMessages([...response.data]); // ✅ Always new reference, forces re-render
+      setRenderToggle(prev => !prev);
+
       const firstUnreadIndex = response.data.findIndex(
         (msg: Message) => !msg.readBy?.includes(currentUser.id)
       );
-      setFirstUnreadMessageIndex(firstUnreadIndex); // <- create this state
+      setFirstUnreadMessageIndex(firstUnreadIndex);
 
-    } catch (error) {
-      console.error("Error fetching messages:", error);
+    } catch (err) {
+      console.error("❌ Error fetching messages:", err);
       setError("Failed to load messages.");
     } finally {
       setLoading(false);
     }
-  };
+  }, [conversation?._id, token, currentUser.id]);
+
+  useImperativeHandle(ref, () => ({
+    fetchMessages
+  }));
+
+
+
   const fetchPinnedMessage = async () => {
-    if (!conversation?._id) return;
-
-    const res = await axios.get(`http://localhost:5001/api/messages/pinned/${conversation._id}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-
-    setPinnedMessage(res.data); // can be null or a message
+    const token = localStorage.getItem("token");
+    const res = await axios.get(
+      `http://localhost:5001/api/messages/pinned/${conversation._id}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      }
+    );
+    setPinnedMessage(res.data); // <-- local state
   };
 
-  // ✅ Handle sending messages & files
+
+
   const handleSend = async () => {
     if (editingMessage) {
       await handleEditMessage();
@@ -555,48 +659,94 @@ export default function ChatWindow({
       }
     }
 
+    let actualConversationId = conversation?._id;
+
+    // ✅ If it's a temp conversation (starts with "new-"), create it first
+    if (actualConversationId?.startsWith("new-")) {
+      try {
+        const response = await axios.post(
+          "http://localhost:5001/api/messages/find-or-create",
+          {
+            participantId:
+              conversation?.participants.find(
+                (p) =>
+                  (p._id || p.id) !== (authUser._id || authUser.id)
+              )?._id || conversation?.participants.find(
+                (p) =>
+                  (p._id || p.id) !== (authUser._id || authUser.id)
+              )?.id,
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        const createdConvo = response.data;
+        actualConversationId = createdConvo._id;
+
+        // ✅ Update the selected conversation
+        setSelectedConversation(createdConvo);
+
+        // ✅ Refresh conversation list to include it
+        fetchConversations();
+      } catch (error) {
+        console.error("❌ Failed to create conversation before sending message:", error);
+        return;
+      }
+    }
     const messageData: any = {
-      conversationId: conversation?._id,
+      conversationId: conversation?.id?.startsWith("new-") ? null : conversation?._id,
       content: newMessage,
-      file: filePath,  // ✅ now this includes {_id, name, type}
+      file: filePath,
       replyTo: replyTo?._id || null,
     };
-    
     if (!conversation?.isGroup) {
       messageData.receiver = otherParticipant?._id || otherParticipant?.id;
     }
-    if (replyTo) {
-      messageData.replyTo = replyTo._id;
+
+    if (!conversation?.isGroup) {
+      messageData.receiver =
+        otherParticipant?._id || otherParticipant?.id;
     }
 
     try {
-      const response = await axios.post("http://localhost:5001/api/messages/send", messageData, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      // ✅ Clear input fields
+      const response = await axios.post(
+        "http://localhost:5001/api/messages/send",
+        messageData,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      if (conversation?.id?.startsWith("new-")) {
+        setSelectedConversation({
+          ...conversation,
+          _id: response.data.conversationId, // 🔄 Replace temp ID with real one
+        });
+      }
       setNewMessage("");
       setFile(null);
-      setReplyTo(null); // ✅ Clear reply state after sending
-
+      setReplyTo(null);
     } catch (error) {
-      console.error("❌ Failed to send message:", error);
+      console.error("❌ Error sending message:", error.stack || error);
+      res.status(500).json({ error: "Message sending failed", details: error.message });
     }
   };
-
   // ✅ Upload file to GridFS
   const uploadFile = async (file: File) => {
     try {
       const formData = new FormData();
       formData.append("file", file);
-  
+
       const response = await axios.post("http://localhost:5001/api/attachments/upload", formData, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
-  
+
       if (response.data?.filePath) {
         return {
           _id: response.data.filePath,
@@ -610,53 +760,110 @@ export default function ChatWindow({
       return null;
     }
   };
-  
+
 
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-gray-50 max-w-full overflow-hidden">
+    <div
+      className="flex-1 flex flex-col h-full bg-gray-50 max-w-full overflow-hidden">
       {/* Chat Header */}
       {/* Chat Header */}
 
-      <div className="p-4 border-b border-gray-200 bg-white flex items-center space-x-3">
-        {conversation?.isGroup ? (
-          <div className="w-10 h-10 rounded-full bg-indigo-200 flex items-center justify-center text-indigo-700 font-bold">
-            {conversation.groupName?.charAt(0).toUpperCase() || "G"}
+      {/* Top bar when selecting messages */}
+      {isSelecting ? (
+  <div className="flex items-center justify-between bg-indigo-50 border-b border-indigo-100 px-4 py-3">
+    <div className="flex items-center space-x-4">
+      <span className="text-indigo-700 font-medium text-sm">
+        {selectedMessages.length} selected
+      </span>
+      
+      <button
+  onClick={() => {
+    if (selectedMessages.length === 0) return;
 
-          </div>
-        ) : (
-          <img
-            src={
-              otherParticipant?.avatar ||
-              `https://ui-avatars.com/api/?name=${encodeURIComponent(otherParticipant?.name || "User")}`
-            }
-            alt={otherParticipant?.name || "User"}
-            className="w-10 h-10 rounded-full"
-          />
-        )}
+    const onlySenderMessages = selectedMessages.every(
+      (msg) =>
+        (msg.sender?._id || msg.sender?.id || msg.sender) === currentUser.id
+    );
 
-        <h2
-          className={`font-medium text-gray-900 ${conversation?.isGroup ? 'cursor-pointer' : ''}`}
-          onClick={() => {
-            if (conversation?.isGroup) {
-              setShowInfoPanel(true);
-            }
-          }}
-        >
-          {conversation?.isGroup
-            ? conversation.groupName || "Unnamed Group"
-            : otherParticipant?.name || "Unknown"}
+    setMultiDeleteModal({
+      isMixed: !onlySenderMessages,
+      count: selectedMessages.length,
+    });
+  }}
+  className="flex items-center space-x-2 bg-white px-3 py-1.5 rounded-lg shadow-sm border border-gray-200 hover:border-indigo-300 transition-all"
+>
+  <Trash2 className="w-4 h-4 text-red-600" />
+  <span className="text-sm text-gray-700">Delete</span>
+</button>
 
-          {/* 👇 Only show this small text if it's a group */}
-          {conversation?.isGroup && (
-            <p className="text-xs text-gray-500">
-              Click for Group Info
-            </p>
+
+      <button
+        onClick={() => {
+          setShowForwardModal(true);
+setMessageToForward([...selectedMessages]); // ⬅️ store array
+
+        }}
+        className="flex items-center space-x-2 bg-white px-3 py-1.5 rounded-lg shadow-sm border border-gray-200 hover:border-indigo-300 transition-all"
+      >
+        <Forward className="w-4 h-4 text-indigo-600" />
+        <span className="text-sm text-gray-700">Forward</span>
+      </button>
+    </div>
+
+    <button 
+      onClick={() => {
+        setIsSelecting(false);
+        setSelectedMessages([]);
+      }}
+      className="flex items-center space-x-2 bg-white px-3 py-1.5 rounded-lg shadow-sm border border-gray-200 hover:border-indigo-300 transition-all"
+    >
+      <X className="w-4 h-4 text-gray-500" />
+      <span className="text-sm text-gray-700">Cancel</span>
+    </button>
+  </div>
+) : (
+        <div className="p-4 border-b border-gray-200 bg-white flex items-center space-x-3">
+          {conversation?.isGroup ? (
+            <div className="w-10 h-10 rounded-full bg-indigo-200 flex items-center justify-center text-indigo-700 font-bold">
+              {conversation.groupName?.charAt(0).toUpperCase() || "G"}
+
+            </div>
+          ) : (
+            <img
+              src={
+                otherParticipant?.avatar ||
+                `https://ui-avatars.com/api/?name=${encodeURIComponent(otherParticipant?.name || "User")}`
+              }
+              alt={otherParticipant?.name || "User"}
+              className="w-10 h-10 rounded-full"
+            />
           )}
-        </h2>
+
+          <h2
+            className="font-medium text-gray-900 cursor-pointer"
+            onClick={() => {
+              setShowInfoPanel(true);
+            }}
+          >
+            {conversation?.isGroup
+              ? conversation.groupName || "Unnamed Group"
+              : otherParticipant?.name || "Unknown"}
+
+            <p className="text-xs text-gray-500">
+              Click for {conversation?.isGroup ? "Group" : "User"} Info
+            </p>
+          </h2>
 
 
-      </div>
+
+
+        </div>
+        // your original header here (e.g. conversation name bar)
+      )}
+
+
+
 
       {showInfoPanel && conversation?.isGroup && (
         <GroupInfoPanel
@@ -664,10 +871,19 @@ export default function ChatWindow({
           fetchConversations={fetchConversations}
           socket={socket} // 👈 from ChatWindow
           setSelectedConversation={setSelectedConversation} // ✅ ADD THIS
-
+          conversations={conversations} // ✅ MUST be passed
           onClose={() => setShowInfoPanel(false)}
         />
       )}
+      {conversation && !conversation.isGroup && showInfoPanel && (
+        <UserInfoPanel
+          conversation={conversation}
+          onClose={() => setShowInfoPanel(false)}
+          fetchConversations={fetchConversations}
+          setSelectedConversation={setSelectedConversation}
+        />
+      )}
+
       {/* Messages */}
       {/* Messages Container */}
       {pinnedMessage && (
@@ -699,41 +915,60 @@ export default function ChatWindow({
       )}
 
 
-      <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-3" ref={scrollContainerRef}>
-        {messages
-          .filter((message) => !message.deletedBy?.includes(currentUser.id))
-          .map((message, index) => {
+      <div
+        key={`${conversation?._id}-${messages.length}-${renderToggle}`}
 
+        className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-3" ref={scrollContainerRef}>
+        {messages
+          .filter((message) => {
+            // Convert IDs to string if needed:
+            const deletedIds = message.deletedBy ? message.deletedBy.map((id: any) => id.toString()) : [];
+            return !deletedIds.includes(currentUser.id.toString()) && !message.isDeletedForEveryone;
+          })
+
+          .map((message, index) => {
             const isLast = index === messages.length - 1;
             return (
+<div
+  key={message._id}
+  id={`msg-${message._id}`}
+  ref={pinnedMessage?._id === message._id ? pinnedMessageRef : null}
+  className={`flex w-full max-w-full ${isSelecting ? 'pl-10 pr-4' : 'px-4'} min-w-0 items-start relative
+    ${message.sender === currentUser.id || message.sender?._id === currentUser.id
+      ? "justify-end" // sent → align right
+      : "justify-start" // received → align left
+    }`}
+  onMouseEnter={() => setHoveredMessageId(message._id)}
+  onMouseLeave={() => setHoveredMessageId(null)}
+>
 
-              <div
-                key={message._id}
-                id={`msg-${message._id}`}
-                ref={pinnedMessage?._id === message._id ? pinnedMessageRef : null}
-                className={`flex ${(message.sender?._id || message.sender?.id || message.sender) === currentUser.id
-                  ? 'justify-end'
-                  : 'justify-start'
-                  } w-full max-w-full px-4 min-w-0 ${pinnedMessage?._id === message._id ? 'animate-ping-highlight' : ''
-                  }`}
-                onMouseEnter={() => setHoveredMessageId(message._id)}
-                onMouseLeave={() => setHoveredMessageId(null)}
-              >
+                {/* Checkbox column - always present but hidden when not selecting */}
+                {isSelecting && (
+  <div className="absolute left-2 top-2 z-10">
+    <input
+      type="checkbox"
+      checked={selectedMessages.some((m) => m._id === message._id)}
+      onChange={(e) => {
+        if (e.target.checked) {
+          setSelectedMessages((prev) => [...prev, message]);
+        } else {
+          setSelectedMessages((prev) =>
+            prev.filter((m) => m._id !== message._id)
+          );
+        }
+      }}
+      className="w-5 h-5 cursor-pointer accent-indigo-600"
+    />
+  </div>
+)}
 
-                {message.replyTo && (
-                  <div className="text-xs text-gray-700 mb-1 p-2 border-l-4 border-indigo-400 bg-indigo-50 rounded">
-                    <div className="font-medium">{message.replyTo.senderName || "Someone"}</div>
-                    <div className="truncate max-w-xs">{message.replyTo.content || "Attachment"}</div>
-                  </div>
-                )}
-
-                {/* Message Bubble */}
-                <div
-                  className={`relative max-w-[min(85%,_500px)] p-3 rounded-lg ${(message.sender?._id || message.sender?.id || message.sender) === currentUser.id
+          
+                {/* Rest of your message bubble code remains unchanged */}
+                <div className={`relative max-w-[min(85%,_500px)] p-3 rounded-lg ${
+                  (message.sender?._id || message.sender?.id || message.sender) === currentUser.id
                     ? 'bg-indigo-600 text-white'
                     : 'bg-gray-100 text-gray-900'
-                    }`}>
-
+                }`}>
                   {/* Sender Name (group only) */}
                   {conversation?.isGroup && (message.sender?._id || message.sender?.id) !== currentUser.id && (
                     <p className="text-xs font-semibold mb-1 opacity-75 text-gray-700">
@@ -750,12 +985,12 @@ export default function ChatWindow({
                       // IMAGE PREVIEW
                       <>
                         <div
-onClick={() =>
-  openImageModal(
-    `http://localhost:5001/api/attachments/${message.file._id}`,
-    message.file.name || "Image"
-  )
-}
+                          onClick={() =>
+                            openImageModal(
+                              `http://localhost:5001/api/attachments/${message.file._id}`,
+                              message.file.name || "Image"
+                            )
+                          }
                           className="cursor-pointer"
                         >
                           <img
@@ -771,7 +1006,7 @@ onClick={() =>
                       <div className="flex items-center space-x-2 bg-white p-2 rounded shadow text-sm">
                         <File className="w-4 h-4 text-gray-600" />
                         <a
-href={`http://localhost:5001/api/attachments/${message.file._id}`}
+                          href={`http://localhost:5001/api/attachments/${message.file._id}`}
                           download
                           className="flex items-center space-x-2 text-blue-600 hover:text-blue-800"
                         >
@@ -784,8 +1019,15 @@ href={`http://localhost:5001/api/attachments/${message.file._id}`}
                       </div>
                     )
                   ) : (
-                    <p className="whitespace-pre-wrap">{message.content}</p>
-                  )}
+                    <Linkify
+                      options={{
+                        target: "_blank",
+                        rel: "noopener noreferrer",
+                        className: "text-blue-400 hover:underline",
+                      }}
+                    >
+                      {message.content}
+                    </Linkify>)}
 
                   {/* Timestamp */}
                   <div className="flex items-center justify-end gap-2 mt-2">
@@ -799,20 +1041,20 @@ href={`http://localhost:5001/api/attachments/${message.file._id}`}
 
                   {/* Dropdown Trigger */}
                   {hoveredMessageId === message._id && (
-  <button
-    onClick={() => setDropdownFor(message._id)}
-    className={`absolute top-1/2 -translate-y-1/2 group z-50 
-      ${(message.sender === currentUser.id || message.sender?._id === currentUser.id)
-        ? 'left-[-40px]'  // sender (right side bubble) → show pill on left
-        : 'right-[-40px]'}  // receiver (left side bubble) → show pill on right
-     bg-white shadow-md border px-2 py-1 rounded-full flex items-center space-x-1
-  transition-all duration-200 ease-in hover:scale-105`}
-    title="Message options"
-  >
-    <MoreVertical className="w-4 h-4 text-gray-500" />
-    <Smile className="w-4 h-4 text-gray-500" />
-  </button>
-)}
+                    <button
+                      onClick={() => setDropdownFor(message._id)}
+                      className={`absolute top-1/2 -translate-y-1/2 group z-50 
+        ${(message.sender === currentUser.id || message.sender?._id === currentUser.id)
+                          ? 'left-[-40px]'  // sender (right side bubble) → show pill on left
+                          : 'right-[-40px]'}  // receiver (left side bubble) → show pill on right
+      bg-white shadow-md border px-2 py-1 rounded-full flex items-center space-x-1
+    transition-all duration-200 ease-in hover:scale-105`}
+                      title="Message options"
+                    >
+                      <MoreVertical className="w-4 h-4 text-gray-500" />
+                      <Smile className="w-4 h-4 text-gray-500" />
+                    </button>
+                  )}
 
 
                   {/* Dropdown Menu */}
@@ -823,7 +1065,7 @@ href={`http://localhost:5001/api/attachments/${message.file._id}`}
                         ? 'right-0'   // for messages sent by you (right side)
                         : 'left-0'    // for others (left side)
                         } ${emojiPickerFor === message._id ? 'w-74' : 'w-48'}
-                  bg-white border rounded-lg shadow-lg z-[1000] text-sm text-gray-700 overflow-hidden`}
+                    bg-white border rounded-lg shadow-lg z-[1000] text-sm text-gray-700 overflow-hidden`}
                     >
 
                       <button
@@ -853,14 +1095,14 @@ href={`http://localhost:5001/api/attachments/${message.file._id}`}
                       <button
                         onClick={() => {
                           setShowForwardModal(true);
-                          setMessageToForward(message);
+                          setMessageToForward([message]); // ✅ wrap in array
                         }}
                         className="block w-full px-4 py-2 hover:bg-gray-100 text-left"
                       >
                         🔁 Forward
                       </button>                      {showForwardModal && messageToForward && (
                         <ForwardModal
-                        message={messageToForward}
+                        messages={messageToForward}
                         currentUser={currentUser}
                           onClose={() => {
                             setShowForwardModal(false);
@@ -910,7 +1152,15 @@ href={`http://localhost:5001/api/attachments/${message.file._id}`}
                       )}
 
 
-                      <button onClick={() => onSelect(message)} className="block w-full px-4 py-2 hover:bg-gray-100 text-left">✅ Select</button>
+                      <button
+                        onClick={() => {
+                          setIsSelecting(true);
+                          setSelectedMessages([message]);
+                        }}
+                        className="block w-full px-4 py-2 hover:bg-gray-100 text-left"
+                      >
+                        ✅ Select
+                      </button>
                       <button onClick={() => onShare(message)} className="block w-full px-4 py-2 hover:bg-gray-100 text-left">📤 Share</button>
 
                       {/* Emoji Reactions */}
@@ -960,13 +1210,12 @@ href={`http://localhost:5001/api/attachments/${message.file._id}`}
                     </div>
                   )}
                   {message.reactions && message.reactions.length > 0 && (
-  <div
-    className={`absolute -bottom-4 ${
-      (message.sender?._id || message.sender?.id || message.sender) === currentUser.id
-        ? 'right-2'
-        : 'left-2'
-    } flex space-x-1 bg-white px-2 py-1 rounded-full shadow border z-10`}
-  >
+                    <div
+                      className={`absolute -bottom-4 ${(message.sender?._id || message.sender?.id || message.sender) === currentUser.id
+                        ? 'right-2'
+                        : 'left-2'
+                        } flex space-x-1 bg-white px-2 py-1 rounded-full shadow border z-10`}
+                    >
 
                       {Array.from(new Set(message.reactions.map(r => r.emoji))).map((emoji) => (
                         <div
@@ -980,14 +1229,13 @@ href={`http://localhost:5001/api/attachments/${message.file._id}`}
                     </div>
                   )}
                   {reactionPopupFor === message._id && (
-  <div
-    ref={reactionPopupRef}
-    className={`absolute -bottom-20 ${
-      (message.sender?._id || message.sender?.id || message.sender) === currentUser.id
-        ? 'right-0'
-        : 'left-2'
-    } w-60 bg-white text-gray-800 shadow-lg rounded-lg border p-3 z-20`}
->
+                    <div
+                      ref={reactionPopupRef}
+                      className={`absolute -bottom-20 ${(message.sender?._id || message.sender?.id || message.sender) === currentUser.id
+                        ? 'right-0'
+                        : 'left-2'
+                        } w-60 bg-white text-gray-800 shadow-lg rounded-lg border p-3 z-20`}
+                    >
 
 
 
@@ -1179,72 +1427,111 @@ href={`http://localhost:5001/api/attachments/${message.file._id}`}
         </div>
       )}
 
-{imagePreview && (
-  <div className="fixed inset-0 z-50 bg-black bg-opacity-70 flex items-center justify-center p-4">
-    <div className="relative max-w-5xl w-full max-h-full flex flex-col items-center">
+      {imagePreview && (
+        <div className="fixed inset-0 z-50 bg-black bg-opacity-70 flex items-center justify-center p-4">
+          <div className="relative max-w-5xl w-full max-h-full flex flex-col items-center">
 
-      {/* Top-right buttons */}
-      <div className="absolute top-4 right-4 flex space-x-2 z-50">
-        <a
-          href={imagePreview.url}
-          download={imagePreview.filename}
-          className="bg-white px-3 py-1 text-sm rounded shadow hover:bg-gray-100"
-        >
-          ⬇️ Download
-        </a>
-        <button
-          onClick={() => setImagePreview(null)}
-          className="bg-white px-3 py-1 text-sm rounded shadow hover:bg-gray-100"
-        >
-          ✕
-        </button>
-      </div>
+            {/* Top-right buttons */}
+            <div className="absolute top-4 right-4 flex space-x-2 z-50">
+              <a
+                href={imagePreview.url}
+                download={imagePreview.filename}
+                className="bg-white px-3 py-1 text-sm rounded shadow hover:bg-gray-100"
+              >
+                ⬇️ Download
+              </a>
+              <button
+                onClick={() => setImagePreview(null)}
+                className="bg-white px-3 py-1 text-sm rounded shadow hover:bg-gray-100"
+              >
+                ✕
+              </button>
+            </div>
 
-      {/* Zoom Controls */}
-      <div className="absolute top-5 left-5 z-50 flex items-center space-x-3 bg-white bg-opacity-80 rounded-full px-4 py-1 shadow-lg">
-  <button
-    onClick={() => setZoom(prev => Math.max(prev - 0.2, 0.2))}
-    className="text-gray-800 hover:text-indigo-600 text-xl"
-    title="Zoom Out"
-  >
-    🔍➖
-  </button>
-  <button
-    onClick={() => setZoom(1)}
-    className="text-gray-800 hover:text-indigo-600 text-sm font-semibold border border-gray-400 px-2 py-1 rounded"
-    title="Reset Zoom (1:1)"
-  >
-    🔁1:1
-  </button>
-  <button
-    onClick={() => setZoom(prev => Math.min(prev + 0.2, 5))}
-    className="text-gray-800 hover:text-indigo-600 text-xl"
-    title="Zoom In"
-  >
-    🔍➕
-  </button>
-</div>
+            {/* Zoom Controls */}
+            <div className="absolute top-5 left-5 z-50 flex items-center space-x-3 bg-white bg-opacity-80 rounded-full px-4 py-1 shadow-lg">
+              <button
+                onClick={() => setZoom(prev => Math.max(prev - 0.2, 0.2))}
+                className="text-gray-800 hover:text-indigo-600 text-xl"
+                title="Zoom Out"
+              >
+                🔍➖
+              </button>
+              <button
+                onClick={() => setZoom(1)}
+                className="text-gray-800 hover:text-indigo-600 text-sm font-semibold border border-gray-400 px-2 py-1 rounded"
+                title="Reset Zoom (1:1)"
+              >
+                🔁1:1
+              </button>
+              <button
+                onClick={() => setZoom(prev => Math.min(prev + 0.2, 5))}
+                className="text-gray-800 hover:text-indigo-600 text-xl"
+                title="Zoom In"
+              >
+                🔍➕
+              </button>
+            </div>
 
 
-      {/* Image Container */}
-      <div className="overflow-auto max-h-[80vh] rounded border border-white p-2">
-        <img
-          src={imagePreview.url}
-          alt="Preview"
-          style={{ transform: `scale(${zoom})` }}
-          className="transition-transform duration-200 max-h-[80vh] max-w-full object-contain"
-        />
-      </div>
+            {/* Image Container */}
+            <div className="overflow-auto max-h-[80vh] rounded border border-white p-2">
+              <img
+                src={imagePreview.url}
+                alt="Preview"
+                style={{ transform: `scale(${zoom})` }}
+                className="transition-transform duration-200 max-h-[80vh] max-w-full object-contain"
+              />
+            </div>
 
-      {/* Filename Below */}
-      <p className="text-white text-sm mt-4 truncate max-w-[80vw] text-center">
-        {imagePreview.filename}
-      </p>
-    </div>
-  </div>
+            {/* Filename Below */}
+            <p className="text-white text-sm mt-4 truncate max-w-[80vw] text-center">
+              {imagePreview.filename}
+            </p>
+          </div>
+        </div>
+      )}
+
+{multiDeleteModal && (
+  <MultiDeleteModal
+    isMixed={multiDeleteModal.isMixed}
+    count={multiDeleteModal.count}
+    onClose={() => setMultiDeleteModal(null)}
+    onDelete={(forEveryone) => {
+      const ids = selectedMessages.map((m) => m._id);
+    
+      if (multiDeleteModal?.isMixed) {
+        // 🚫 Mixed selection – always delete only for self
+        handleDeleteOnlyForMe(ids);
+      } else if (forEveryone) {
+        // ✅ Sender-only and user selected "Delete for everyone"
+        handleDeleteMessage(ids, true);
+      } else {
+        // ✅ Sender-only and user selected "Delete for me"
+        handleDeleteOnlyForMe(ids);
+      }
+    
+      setMultiDeleteModal(null);
+    }}
+    
+    
+    
+  />
+)}
+{showForwardModal && messageToForward?.length > 0 && (
+  <ForwardModal
+  messages={selectedMessages}  // ✅ Pass selected messages array
+    currentUser={currentUser}
+    onClose={() => {
+      setShowForwardModal(false);
+      setMessageToForward(null);
+    }}
+    setSelectedConversation={setSelectedConversation}
+  />
 )}
 
 
     </div>
   );
-}
+}); // ✅ closes forwardRef
+export default ChatWindow;

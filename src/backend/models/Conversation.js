@@ -30,7 +30,12 @@ const ConversationSchema = new mongoose.Schema({
   groupName: { type: String, default: "" },
   groupAdmin: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
-
+  deletedFor: {
+    type: Map,
+    of: Boolean,
+    default: {},
+  },
+  
 },
 { timestamps: true });
 

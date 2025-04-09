@@ -14,14 +14,40 @@
       const { conversationId, content, file, receiver } = req.body;
       const sender = req.user.id;
 
-      if (!conversationId || (!content?.trim() && !file)) {
-        return res.status(400).json({ error: "Conversation ID and content or file required." });
-      }
+      // if (!conversationId || (!content?.trim() && !file)) {
+      //   return res.status(400).json({ error: "Conversation ID and content or file required." });
+      // }
 
-      const conversation = await Conversation.findById(conversationId);
-      if (!conversation) {
-        return res.status(404).json({ error: "Conversation not found" });
-      }
+      // const conversation = await Conversation.findById(conversationId);
+      // if (!conversation) {
+      //   return res.status(404).json({ error: "Conversation not found" });
+      // }let conversation;
+      let conversation; // ✅ ADD THIS BACK
+
+if (!conversationId) {
+  // New 1-to-1 chat logic
+  if (!receiver) {
+    return res.status(400).json({ error: "Receiver is required for new 1-to-1 message." });
+  }
+
+  conversation = await Conversation.findOne({
+    isGroup: false,
+    participants: { $all: [sender, receiver], $size: 2 },
+  });
+
+  if (!conversation) {
+    conversation = await Conversation.create({
+      participants: [sender, receiver],
+      isGroup: false,
+    });
+  }
+} 
+else {
+  conversation = await Conversation.findById(conversationId);
+  if (!conversation) {
+    return res.status(404).json({ error: "Conversation not found" });
+  }
+}
 
       const isGroup = conversation.isGroup;
 
@@ -29,7 +55,7 @@
         sender,
         content,
         file,
-        conversationId,
+        conversationId: conversation._id, // ✅ Fix: always assign from actual conversation object
         timestamp: new Date(),
         replyTo: req.body.replyTo || null,
       };
@@ -75,7 +101,14 @@
         }
       });
 
-      await conversation.save();
+      conversation.deletedFor.set(sender, false);
+
+      if (!isGroup && receiver) {
+        conversation.deletedFor.set(receiver, false); // ✅ Reset receiver's deleted state too
+      }
+            await conversation.save();
+// ✅ If user had deleted it before, reset their deleted status
+
 
       // Emit to each participant's userId room
       conversation.participants.forEach((userId) => {
@@ -87,8 +120,11 @@
       req.io.to(conversation._id.toString()).emit("newMessage", newMessage);
       req.io.to(conversation._id.toString()).emit("conversationCreated", conversation);
 
-      res.status(201).json(newMessage);
-    } catch (error) {
+      res.status(201).json({
+        message: newMessage,
+        conversationId: conversation._id, // ✅ so frontend updates temporary ID to real one
+      });
+          } catch (error) {
       console.error("❌ Error sending message:", error);
       res.status(500).json({ error: "Message sending failed", details: error.message });
     }
@@ -100,7 +136,7 @@
       const userId = req.user.id;
 
       // Find all conversations where the user is a participant
-      const conversations = await Conversation.find({ participants: userId })
+      const conversations = await Conversation.find({ participants: userId, [`deletedFor.${userId}`]: { $ne: true } })
         .populate("participants", "name email role avatar")
         .populate("createdBy", "name email avatar") // ✅ add this
         .populate({
@@ -111,6 +147,18 @@
             select: "name avatar email",
           },
         })
+        .populate({
+          path: "lastMessage",
+          select: "content file timestamp isDeletedForEveryone deletedBy", // 👈 include this
+        })    
+        .populate({
+          path: "pinnedMessage",
+          populate: {
+            path: "sender",
+            select: "name avatar email"
+          }
+        })
+            
         .sort({ updatedAt: -1 });
 
       // Add unread count per conversation
@@ -134,7 +182,14 @@
       const conversation = await Conversation.findById(req.params.id)
         .populate("participants", "name email avatar role")
         .populate("createdBy", "name email avatar") // ✅ ADD THIS
-
+        .populate({
+          path: "pinnedMessage",
+          populate: {
+            path: "sender",
+            select: "name avatar email"
+          }
+        })
+        
         .populate({
           path: "lastMessage",
           select: "content file timestamp sender isDeletedForEveryone",
@@ -142,6 +197,7 @@
             path: "sender",
             select: "name avatar email",
           },
+          
         });
 
       if (!conversation) return res.status(404).json({ error: "Not found" });
@@ -776,6 +832,125 @@ router.put('/delete-multiple', authMiddleware, async (req, res) => {
   }
 });
 
+// ✅ CLEAR MESSAGES FOR CURRENT USER
+router.put("/clear/:conversationId", authMiddleware, async (req, res) => {
+  const userId = req.user.id;
+  const { conversationId } = req.params;
+
+  try {
+    // Ensure conversation exists
+    const conversation = await Conversation.findById(conversationId);
+    if (!conversation) {
+      return res.status(404).json({ error: "Conversation not found" });
+    }
+
+    // Mark all messages as deleted for the user
+    await Message.updateMany(
+      {
+        conversationId,
+        deletedBy: { $ne: userId },
+        isDeletedForEveryone: { $ne: true },
+      },
+      { $addToSet: { deletedBy: userId } }
+    );
+
+    res.json({ success: true, message: "Messages cleared for user." });
+  } catch (error) {
+    console.error("❌ Clear messages failed:", error);
+    res.status(500).json({ error: "Failed to clear messages" });
+  }
+});
+
+router.put("/clear/:conversationId", authMiddleware, async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const userId = req.user.id;
+
+    // 1. Mark all messages in this conversation as deleted for this user
+    await Message.updateMany(
+      {
+        conversationId,
+        deletedBy: { $ne: userId },
+        isDeletedForEveryone: { $ne: true }
+      },
+      { $addToSet: { deletedBy: userId } }
+    );
+
+    // 2. Fetch the conversation and update lastMessage if needed
+    const conversation = await Conversation.findById(conversationId);
+
+    if (conversation?.lastMessage) {
+      const lastMsg = await Message.findById(conversation.lastMessage._id);
+      const isDeletedForThisUser =
+        lastMsg?.isDeletedForEveryone ||
+        lastMsg?.deletedBy.includes(userId);
+
+      if (isDeletedForThisUser) {
+        // Find new last visible message
+        const newLast = await Message.find({
+          conversationId,
+          isDeletedForEveryone: { $ne: true },
+          deletedBy: { $ne: userId }
+        })
+          .sort({ timestamp: -1 })
+          .limit(1);
+
+        if (newLast.length > 0) {
+          conversation.lastMessage = {
+            _id: newLast[0]._id,
+            content: newLast[0].file ? "📎 Sent an attachment" : newLast[0].content,
+            file: newLast[0].file || null,
+            timestamp: newLast[0].timestamp,
+          };
+        } else {
+          conversation.lastMessage = null;
+        }
+
+        conversation.markModified("lastMessage");
+        await conversation.save();
+      }
+    }
+
+    // 3. Emit real-time update
+    req.io.to(userId.toString()).emit("messagesCleared", { conversationId });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Clear message error:", err);
+    res.status(500).json({ error: "Failed to clear messages." });
+  }
+});
+  
+// ✅ DELETE Chat for current user (soft delete)
+router.delete("/conversation/:id", authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const conversationId = req.params.id;
+
+    // 1. Mark all messages as deleted for this user
+    await Message.updateMany(
+      {
+        conversationId,
+        isDeletedForEveryone: { $ne: true },
+        deletedBy: { $ne: userId }
+      },
+      { $addToSet: { deletedBy: userId } }
+    );
+
+    // 2. Mark the conversation as deleted for this user
+    await Conversation.findByIdAndUpdate(conversationId, {
+      $set: { [`deletedFor.${userId}`]: true },
+    });
+
+    // 3. Emit to update UI if needed
+    req.io.to(userId.toString()).emit("conversationDeleted", { conversationId });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("❌ Delete chat error:", err);
+    res.status(500).json({ error: "Failed to delete chat" });
+  }
+});
 
 
   export default router;
