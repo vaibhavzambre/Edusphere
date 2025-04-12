@@ -19,6 +19,8 @@ export default function Messages() {
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+const [unreadCount, setUnreadCount] = useState<number>(0); // ✅ NEW
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [chatWindowVersion, setChatWindowVersion] = useState(0);
@@ -116,14 +118,22 @@ export default function Messages() {
         setError("No authentication token found.");
         return;
       }
-
+  
       const response = await axios.get("http://localhost:5001/api/messages/conversations", {
         headers: { Authorization: `Bearer ${token}` },
       });
-
+  
       if (Array.isArray(response.data)) {
-        setConversations(response.data);
-        return response.data; // ✅ RETURN THIS!
+        // Sort conversations by the timestamp of the last message.
+        const sortedConversations = response.data.sort((a, b) => {
+          // If there is no lastMessage, treat it as a very old time (e.g. 0)
+          const timeA = a.lastMessage ? new Date(a.lastMessage.timestamp).getTime() : 0;
+          const timeB = b.lastMessage ? new Date(b.lastMessage.timestamp).getTime() : 0;
+          return timeB - timeA; // descending order: most recent message first
+        });
+        
+        setConversations(sortedConversations);
+        return sortedConversations;
       }
     } catch (error) {
       console.error("Error fetching conversations:", error);
@@ -132,42 +142,7 @@ export default function Messages() {
       setLoading(false);
     }
   };
-  // useEffect(() => {
-  //   const handleMessagesCleared = (data: any) => {
-  //     console.log("Socket event 'messagesCleared' received with data:", data);
-  //     // Normalize data to an object with conversationId
-  //     const conversationId = typeof data === "string" ? data : data.conversationId;
-  //     console.log("Extracted conversationId:", conversationId);
-  //     console.log("Current selectedConversation:", selectedConversation);
   
-  //     // First, refresh the conversation list
-  //     fetchConversations()
-  //       .then(() => {
-  //         // Then, if the cleared conversation is currently open, refresh its messages
-  //         if (selectedConversation && selectedConversation._id === conversationId) {
-  //           console.log(
-  //             "Selected conversation matches cleared conversation. Calling fetchMessages() now."
-  //           );
-  //           chatWindowRef.current?.fetchMessages?.();
-  //         } else {
-  //           console.log(
-  //             "Cleared conversation does not match the currently selected conversation."
-  //           );
-  //         }
-  //       })
-  //       .catch((err) => {
-  //         console.error("Error in fetchConversations() within messagesCleared handler:", err);
-  //       });
-  //   };
-  
-  //   socket.on("messagesCleared", handleMessagesCleared);
-  //   // console.log("messagesCleared event listener registered in Messages.tsx");
-  
-  //   return () => {
-  //     socket.off("messagesCleared", handleMessagesCleared);
-  //     console.log("messagesCleared event listener unregistered from Messages.tsx");
-  //   };
-  // }, [selectedConversation]);
   
   // ✅ Listen to Socket events
   useEffect(() => {
@@ -267,7 +242,10 @@ export default function Messages() {
             setConversations={setConversations}
             fetchConversations={fetchConversations} 
             chatWindowRef={chatWindowRef}   // <-- Add this line
-
+            onSelectWithUnread={(conversation, unreadCount) => {
+              setSelectedConversation(conversation);
+              setUnreadCount(unreadCount); // ✅ store it here
+            }}
           />
 
           {selectedConversation ? (
@@ -284,11 +262,9 @@ export default function Messages() {
   fetchConversations={fetchConversations}
   conversations={conversations} // ✅ Add this
   chatWindowRef={chatWindowRef} // ✅ PASS THE REF!
-
+  unreadCount={unreadCount} // ✅ now ChatWindow can use this!
 
 />
-
-
           ) : (
             <div className="flex-1 flex items-center justify-center bg-gray-50">
               {conversations.length === 0 ? (

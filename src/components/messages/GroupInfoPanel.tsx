@@ -16,6 +16,10 @@ import {
   X,
   Edit,
   User,
+  Download,
+  ChevronDown,
+  Send,
+  Globe,
 } from "lucide-react";
 import axios from "axios";
 import { useAuth } from "../../context/AuthContext";
@@ -23,6 +27,7 @@ import { toast } from "react-hot-toast";
 import io from "socket.io-client";
 import { useNavigate } from "react-router-dom";
 import ForwardModal from "./ForwardModal"; // Adjust path if needed
+import MultiDeleteModal from "./MultiDeleteModal"; // adjust path if needed
 
 // Create a shared socket instance (ensure only one instance exists app‑wide)
 const socket = io("http://localhost:5001");
@@ -33,10 +38,11 @@ interface GroupInfoPanelProps {
   fetchConversations: () => void;
   setSelectedConversation: (c: Conversation) => void; // ✅ NEW
   // Added fetchConversations
+  conversations: Conversation[]; // <<--- Make sure this is here
 
 }
 
-export default function GroupInfoPanel({ conversation, onClose, setSelectedConversation }: GroupInfoPanelProps) {
+export default function GroupInfoPanel({ conversations, conversation, onClose, setSelectedConversation }: GroupInfoPanelProps) {
   const { user: currentUser } = useAuth();
 
   // Define tabs for the side navigation
@@ -57,17 +63,11 @@ export default function GroupInfoPanel({ conversation, onClose, setSelectedConve
   const [memberPopup, setMemberPopup] = useState<string | null>(null);
   const [showForwardModal, setShowForwardModal] = useState(false);
   const [linkMessages, setLinkMessages] = useState<Message[]>([]);
-
-  const navigate = useNavigate();
-
   const token = localStorage.getItem("token");
   const headers = { Authorization: `Bearer ${token}` };
-
   // Local state to hold the updated conversation data
   const [updatedConversation, setUpdatedConversation] = useState<Conversation>(conversation);
   const [memberSearch, setMemberSearch] = useState<string>("");
-
-
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
   const [availableClasses, setAvailableClasses] = useState([]);
   const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
@@ -80,43 +80,114 @@ export default function GroupInfoPanel({ conversation, onClose, setSelectedConve
   const [mediaMessages, setMediaMessages] = useState<Message[]>([]);
   const [fileMessages, setFileMessages] = useState<Message[]>([]);
   const [selectedMedia, setSelectedMedia] = useState<string[]>([]);
-  const [isSelecting, setIsSelecting] = useState(false);
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
-  const selectedMediaObjects = mediaMessages.filter((msg) =>
-    selectedMedia.includes(msg._id)
-  );
-
+  const [selectedLinks, setSelectedLinks] = useState<string[]>([]);
+  const [isLinkSelecting, setIsLinkSelecting] = useState(false);
   const [hoveringMediaId, setHoveringMediaId] = useState<string | null>(null); // Which image is hovered
   const [isMultiSelecting, setIsMultiSelecting] = useState(false); // Multi-select mode active
   const [previewMedia, setPreviewMedia] = useState<string | null>(null); // Fullscreen preview
-  const handleDeleteSelectedMedia = async () => {
-    if (selectedMedia.length === 0) return;
+  const [hoveringId, setHoveringId] = useState<string | null>(null);
+  const [imagePreview, setImagePreview] = useState<null | {
+    url: string;
+    filename: string;
+    sender: string;
+    date: string;
+  }>(null);
+  const [zoom, setZoom] = useState(1);
+  const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
+  const [isFileSelecting, setIsFileSelecting] = useState(false);
 
-    const confirm = window.confirm(`Are you sure you want to delete ${selectedMedia.length} media item(s)?`);
-    if (!confirm) return;
+  const toggleFileSelect = (id: string) => {
+    const updated = selectedFiles.includes(id)
+      ? selectedFiles.filter((fid) => fid !== id)
+      : [...selectedFiles, id];
+    setSelectedFiles(updated);
+    setIsFileSelecting(updated.length > 0);
+  };
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteMode, setDeleteMode] = useState<"full" | "simple">("simple"); // full = radio, simple = only "delete for me"
+
+  const isBottomBarVisible =
+    (activeTab === "media" && isMultiSelecting && selectedMedia.length > 0) ||
+    (activeTab === "files" && isFileSelecting && selectedFiles.length > 0) ||
+    (activeTab === "links" && isLinkSelecting && selectedLinks.length > 0);
+
+
+  
+  const handleDeleteSelected = async (scope: "me" | "everyone") => {
+    const messageIds =
+      activeTab === "media"
+        ? selectedMedia
+        : activeTab === "files"
+          ? selectedFiles
+          : selectedLinks;
+
+    const messages =
+      activeTab === "media"
+        ? mediaMessages
+        : activeTab === "files"
+          ? fileMessages
+          : linkMessages;
+
+    if (messageIds.length === 0) return;
 
     try {
-      // Send a request to delete the selected media
-      await axios.put(
-        "http://localhost:5001/api/messages/delete-multiple",
-        { messageIds: selectedMedia },
-        { headers }
+      await Promise.all(
+        messageIds.map((messageId) =>
+          axios.put(
+            `http://localhost:5001/api/messages/delete/${messageId}`,
+            { forEveryone: scope === "everyone" },
+            { headers }
+          )
+        )
       );
 
-      // Success
-      toast.success("Media deleted");
+      // Emit socket event to notify others (this is CRUCIAL for consistency!)
+      socket.emit("deleteMessage", {
+        ids: messageIds,
+        forEveryone: scope === "everyone",
+        userId: currentUser.id,
+      });
 
-      // Update the media messages UI
-      const updatedMedia = mediaMessages.filter((msg) => !selectedMedia.includes(msg._id));
-      setMediaMessages(updatedMedia);  // UI update
-      setSelectedMedia([]);            // Clear selection
-      setIsMultiSelecting(false);      // Disable multi-select
+      // UI Update: filter out deleted messages
+      if (activeTab === "media") {
+        setMediaMessages((prev) => prev.filter((m) => !messageIds.includes(m._id)));
+        setSelectedMedia([]);
+        setIsMultiSelecting(false);
+      } else if (activeTab === "files") {
+        setFileMessages((prev) => prev.filter((m) => !messageIds.includes(m._id)));
+        setSelectedFiles([]);
+        setIsFileSelecting(false);
+      } else {
+        setLinkMessages((prev) => prev.filter((m) => !messageIds.includes(m._id)));
+        setSelectedLinks([]);
+        setIsLinkSelecting(false);
+      }
 
+      toast.success("Deleted successfully.");
     } catch (err) {
-      console.error("Error deleting messages:", err);
-      toast.error("Failed to delete media.");
+      console.error("❌ Failed to delete:", err);
+      toast.error("Deletion failed.");
     }
   };
+
+
+  const handleTabChange = (tabKey: string) => {
+    setActiveTab(tabKey);
+    setSelectedMedia([]);
+    setSelectedFiles([]);
+    setSelectedLinks([]);
+    setIsMultiSelecting(false);
+    setIsFileSelecting(false);
+    setIsLinkSelecting(false);
+  };
+  useEffect(() => {
+    if (showAddMemberModal) {
+      // Call our new function so that it always uses updatedConversation
+      fetchAvailableParticipants();
+    }
+  }, [showAddMemberModal, updatedConversation]);
+  
+
   useEffect(() => {
     socket.on("messageDeleted", ({ id, forEveryone, userId }) => {
       // Update the UI to remove the deleted message from the media/messages
@@ -136,7 +207,6 @@ export default function GroupInfoPanel({ conversation, onClose, setSelectedConve
     };
   }, []);
 
-
   const handleAddMembers = async () => {
     try {
       await axios.put(
@@ -152,6 +222,9 @@ export default function GroupInfoPanel({ conversation, onClose, setSelectedConve
       setShowAddMemberModal(false);
       setSelectedClassIds([]);
       setSelectedUserIds([]);
+      
+      await fetchConversation();
+
     } catch (err) {
       console.error("Failed to add members:", err);
       toast.error("Could not add members.");
@@ -258,6 +331,7 @@ export default function GroupInfoPanel({ conversation, onClose, setSelectedConve
         onClose();
         toast("You have been removed from the group", { icon: "👋" });
       }
+      
     };
 
     socket.on("groupUpdated", handleGroupUpdated);
@@ -270,6 +344,31 @@ export default function GroupInfoPanel({ conversation, onClose, setSelectedConve
   }, [conversation._id]);
 
   // --- Handlers for group actions ---
+// A new function to fetch available individual users for adding as members
+// Add this function near your state declarations in GroupInfoPanel.tsx
+const fetchAvailableParticipants = async (convData?: Conversation) => {
+  try {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+    // Use the provided conversation data if available; otherwise use updatedConversation.
+    const currentConv = convData || updatedConversation;
+    const res = await axios.get("http://localhost:5001/api/users/all", { headers });
+    // Filter out the current user and those who are already a participant in the group.
+    const available = res.data.filter((user: any) => {
+      return (
+        user._id !== currentUser.id &&
+        !currentConv.participants.some(
+          (member: any) => member._id === user._id
+        )
+      );
+    });
+    setAllUsers(available);
+  } catch (err) {
+    console.error("Error fetching available participants:", err);
+  }
+};
+
+
 
   const handleSaveDescription = async () => {
     try {
@@ -294,6 +393,16 @@ export default function GroupInfoPanel({ conversation, onClose, setSelectedConve
         {},
         { headers }
       );
+      await fetchConversation();
+      fetchAvailableParticipants();
+
+      const latest = await axios.get(
+        `http://localhost:5001/api/messages/conversations/${conversation._id}`,
+        { headers }
+      );
+      setUpdatedConversation(latest.data);
+      fetchAvailableParticipants(latest.data); // safe call
+
       // Optionally, emit a socket event here if needed.
       toast.success("You exited the group");
       onClose();
@@ -324,10 +433,6 @@ export default function GroupInfoPanel({ conversation, onClose, setSelectedConve
       toast.error("Failed to promote member");
     }
   };
-  const filteredMembers = updatedConversation.participants.filter((member) =>
-    member.name?.toLowerCase().includes(memberSearch.toLowerCase()) ||
-    member.email?.toLowerCase().includes(memberSearch.toLowerCase())
-  );
 
   const handleRemoveMember = async (userId: string) => {
     const confirmed = window.confirm("Are you sure you want to remove this member?");
@@ -338,30 +443,50 @@ export default function GroupInfoPanel({ conversation, onClose, setSelectedConve
         { userId },
         { headers }
       );
-      await fetchConversation();
+      await fetchConversation(); // updates updatedConversation (but async)
+      const latest = await axios.get(`http://localhost:5001/api/messages/conversations/${conversation._id}`, { headers });
+      setUpdatedConversation(latest.data); // ensure state is updated immediately
+      fetchAvailableParticipants(latest.data); // pass fresh conversation to the fetcher
+      
       toast.success("Member removed");
     } catch (err) {
       console.error("Failed to remove member:", err);
       toast.error("Failed to remove member");
     }
   };
+const handleMessageUser = async (userId: string, member: User) => {
+  const existing = conversations.find((c) =>
+    !c.isGroup &&
+    c.participants.length === 2 &&
+    c.participants.some((p) => (p._id || p.id)?.toString() === userId.toString())
+  );
 
-  const handleMessageUser = async (userId: string) => {
+  if (existing && existing.lastMessage) {
+    setSelectedConversation(existing);
+    onClose();
+  } else {
+    // ✅ Ensure `member` is fully populated (just in case)
+    let fullUser = member;
     try {
-      const res = await axios.post(
-        "http://localhost:5001/api/messages/find-or-create",
-        { participantId: userId },
-        { headers }
-      );
-      const convo = res.data;
-
-      setSelectedConversation(convo); // ✅ Use it
-      onClose(); // ✅ Close group info panel
+      const res = await axios.get(`http://localhost:5001/api/users/${userId}`, { headers });
+      fullUser = res.data;
     } catch (err) {
-      console.error("Failed to open chat:", err);
-      toast.error("Failed to open chat with user.");
+      console.warn("Failed to fetch full user info for temp convo, using fallback:", err);
     }
-  };
+
+    const tempConvo: Conversation = {
+      _id: `new-${userId}`,
+      id: `new-${userId}`,
+      isGroup: false,
+      participants: [member, currentUser], // other user goes first!
+      lastMessage: null,
+    };
+    
+
+    setSelectedConversation(tempConvo);
+    onClose();
+  }
+};
 
 
 
@@ -488,11 +613,11 @@ export default function GroupInfoPanel({ conversation, onClose, setSelectedConve
       case "members":
         return (
 
-          <div className="space-y-3  overflow-y-auto pr-1">
+          <div className="flex flex-col h-full"> {/* Add flex container */}
             {/* max-h-[400px] */}
 
             <h3 className="font-semibold text-gray-800 mb-2">Members</h3>
-            
+
             <input
               type="text"
               placeholder="Search members"
@@ -552,8 +677,10 @@ export default function GroupInfoPanel({ conversation, onClose, setSelectedConve
                       <div className="absolute right-0 top-8 bg-white border shadow rounded w-40 z-10 member-popup">
                         <button
                           type="button"
-                          onClick={async () => { await handleMessageUser(member._id); setMemberPopup(null); }}
-                          className="flex items-center gap-2 px-4 py-2 hover:bg-gray-100 w-full text-left text-sm"
+                          onClick={async () => {
+                            // Instead of directly calling the API, use our local check.
+                            handleMessageUser(member._id, member);
+                          }} className="flex items-center gap-2 px-4 py-2 hover:bg-gray-100 w-full text-left text-sm"
                         >
                           <MessageCircle size={14} /> Message User
                         </button>
@@ -595,150 +722,144 @@ export default function GroupInfoPanel({ conversation, onClose, setSelectedConve
               <p className="text-sm text-gray-500 italic">(No media to show yet)</p>
             ) : (
               <div className="grid grid-cols-3 gap-2">
-                {mediaMessages.map((msg) => {
-                  const isSelected = selectedMedia.includes(msg._id);
-                  return (
-                    <div
-                      key={msg._id}
-                      className="relative group"
-                      onMouseEnter={() => setHoveringMediaId(msg._id)}
-                      onMouseLeave={() => setHoveringMediaId(null)}
-                    >
-                      {/* Image or Video Preview */}
-                      {msg.file.type.startsWith("video/") ? (
-                        <video
-                          src={`http://localhost:5001/api/attachments/${msg.file._id}`}
-                          className="w-full h-32 object-cover rounded"
-                          muted
-                        />
-                      ) : (
-                        <img
-                          src={`http://localhost:5001/api/attachments/${msg.file._id}`}
-                          alt={msg.file.name}
-                          className="w-full h-32 object-cover rounded cursor-pointer"
-                          onClick={() => {
-                            if (!isMultiSelecting) setPreviewMedia(`http://localhost:5001/api/attachments/${msg.file._id}`);
-                          }}
-                        />
-                      )}
-
-                      {/* Hover Overlay */}
-                      <div className="absolute inset-0 bg-black bg-opacity-10 opacity-0 group-hover:opacity-100 transition rounded" />
-
-                      {/* Checkbox Icon (only visible on hover or in multi-select mode) */}
-                      {(hoveringMediaId === msg._id || isMultiSelecting) && (
-                        <div
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const newSelected = selectedMedia.includes(msg._id)
-                              ? selectedMedia.filter((id) => id !== msg._id)
-                              : [...selectedMedia, msg._id];
-                            setSelectedMedia(newSelected);
-                            setIsMultiSelecting(newSelected.length > 0);
-                          }}
-                          className="absolute top-2 right-2 bg-white bg-opacity-90 rounded-full p-[2px] cursor-pointer z-10"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => { }} // Handled above
-                            className="w-4 h-4 cursor-pointer"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Bottom Action Bar when media selected */}
-            {isMultiSelecting && (
-              <div className="fixed bottom-0 right-0 w-[28rem] bg-white border-t border-gray-300 px-4 py-3 z-50">
-                <span className="text-sm text-gray-600">
-                  {selectedMedia.length} selected
-                </span>
-                <div className="space-x-4">
-                  <button
-                    onClick={() => setShowForwardModal(true)}
-                    className="px-4 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
-                  >
-                    ↪ Forward
-                  </button>
-                  <div className="relative inline-block">
-                    <button className="px-4 py-1.5 bg-red-600 text-white rounded hover:bg-red-700 text-sm">
-                      🗑 Delete ⌄
-                    </button>
-                    <div className="absolute bg-white shadow rounded bottom-full mb-1 right-0 z-10 w-48 border">
-                      <button
-                        onClick={() => handleDeleteSelectedMedia(false)}
-                        className="block w-full text-left px-4 py-2 hover:bg-gray-100 text-sm"
+                {mediaMessages
+                  .filter((msg) => !msg.deletedBy?.includes(currentUser.id))
+                  .map((msg) => {
+                    const isSelected = selectedMedia.includes(msg._id);
+                    const src = `http://localhost:5001/api/attachments/${msg.file._id}`;
+                    return (
+                      <div
+                        key={msg._id}
+                        className="relative group"
+                        onMouseEnter={() => setHoveringMediaId(msg._id)}
+                        onMouseLeave={() => setHoveringMediaId(null)}
                       >
-                        Delete for Me
-                      </button>
+                        {msg.file.type.startsWith("video/") ? (
+                          <video
+                            src={src}
+                            className="w-full h-32 object-cover rounded"
+                            muted
+                          />
+                        ) : (
+                          <img
+                            src={src}
+                            className="w-full h-32 object-cover rounded cursor-pointer"
+                            onClick={(e) => {
+                              // Don’t preview if clicking on download or checkbox
+                              const target = e.target as HTMLElement;
+                              if (target.closest("a") || target.closest("input[type='checkbox']")) return;
 
-                      {/* Show "Delete for Everyone" only if all selected are sent by current user */}
-                      {selectedMediaObjects.every((msg) => msg.sender?._id === currentUser.id) && (
-                        <button
-                          onClick={() => handleDeleteSelectedMedia(true)}
-                          className="block w-full text-left px-4 py-2 hover:bg-gray-100 text-sm text-red-600"
-                        >
-                          Delete for Everyone
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                              setImagePreview({
+                                url: src,
+                                filename: msg.file.name,
+                                sender: msg.sender?.name || "Unknown",
+                                date: msg.createdAt,
+                              });
+                            }}
 
-                  <button
-                    onClick={() => {
-                      setSelectedMedia([]);
-                      setIsMultiSelecting(false);
-                    }}
-                    className="text-gray-500 hover:text-gray-700 text-sm"
-                  >
-                    ✕ Cancel
-                  </button>
-                </div>
+                          />
+                        )}
+
+                        {/* Overlay */}
+                        <div className="absolute inset-0 bg-black bg-opacity-10 opacity-0 group-hover:opacity-100 transition rounded" style={{ pointerEvents: 'none' }} />
+
+                        {/* Hover actions */}
+                        {(hoveringMediaId === msg._id || isMultiSelecting) && (
+                          <div className="absolute top-2 right-2 z-10 flex gap-2 items-center">
+                            <a
+                              href={src}
+                              download
+                              className="bg-white rounded p-1 shadow hover:bg-gray-100 text-gray-700"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Download size={16} />
+                            </a>
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                const newSelected = isSelected
+                                  ? selectedMedia.filter((id) => id !== msg._id)
+                                  : [...selectedMedia, msg._id];
+                                setSelectedMedia(newSelected);
+
+                                setIsMultiSelecting(newSelected.length > 0); // ✅ already correct
+
+                              }}
+                              className="w-4 h-4 cursor-pointer"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
               </div>
             )}
-
+            {/* Bottom Action Bar when media selected */}
           </div>
         );
-
 
       case "files":
         return (
-          <div>
+          <div className="relative h-full pb-16">
             <h3 className="font-semibold text-gray-800 mb-2">Files</h3>
+
             {fileMessages.length === 0 ? (
               <p className="text-sm text-gray-500 italic">(No files to show yet)</p>
             ) : (
-              <div className="grid gap-3">
-                {fileMessages.map((msg) => (
-                  <div
-                    key={msg._id}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-indigo-50 transition"
-                  >
-                    <div className="flex items-center gap-3">
-                      <File className="w-6 h-6 text-gray-600" />
-                      <div className="text-sm text-gray-800 max-w-[200px] truncate">
-                        {msg.file.name}
-                      </div>
-                    </div>
-                    <a
-                      href={`http://localhost:5001/api/attachments/${msg.file._id}`}
-                      download
-                      className="text-sm text-indigo-600 hover:underline"
-                    >
-                      Download
-                    </a>
-                  </div>
-                ))}
+              <div className="space-y-3">
+                <div className="grid gap-3">
+                  {fileMessages
+                    .filter((msg) => !msg.deletedBy?.includes(currentUser.id))
+                    .map((msg) => {
+                      const selected = selectedFiles.includes(msg._id);
+                      const src = `http://localhost:5001/api/attachments/${msg.file._id}`;
+                      return (
+                        <div
+                          key={msg._id}
+                          className="relative flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-indigo-50 transition group"
+                          onMouseEnter={() => setHoveringMediaId(msg._id)}
+                          onMouseLeave={() => setHoveringMediaId(null)}
+                        >
+                          <div className="flex items-center gap-3">
+                            <File className="w-6 h-6 text-gray-600" />
+                            <p className="text-sm text-gray-800 break-all max-w-[16rem]">
+                              {msg.file.name}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <a
+                              href={src}
+                              download
+                              className="text-indigo-600 hover:underline text-sm"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              Download
+                            </a>
+                            {(hoveringMediaId === msg._id || isFileSelecting) && (
+                              <input
+                                type="checkbox"
+                                checked={selected}
+                                onChange={(e) => {
+                                  e.stopPropagation();
+                                  toggleFileSelect(msg._id);
+                                }}
+                                className="w-4 h-4"
+                              />
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
               </div>
             )}
           </div>
         );
-        
+
+
       case "links":
         return (
           <div>
@@ -747,32 +868,57 @@ export default function GroupInfoPanel({ conversation, onClose, setSelectedConve
               <p className="text-sm text-gray-500 italic">(No links to show yet)</p>
             ) : (
               <div className="grid gap-3">
-                {linkMessages.map((msg) => {
-                  const url = msg.content.match(/https?:\/\/[^\s]+/)?.[0];
-                  return (
-                    <div
-                      key={msg._id}
-                      className="p-3 bg-white border rounded-lg hover:bg-blue-50 transition"
-                    >
-                      <a
-                        href={url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-indigo-600 hover:underline break-words text-sm font-medium"
+                {linkMessages
+                  .filter((msg) => !msg.deletedBy?.includes(currentUser.id))
+                  .map((msg) => {
+                    const url = msg.content.match(/https?:\/\/[^\s]+/)?.[0];
+                    const selected = selectedLinks.includes(msg._id);
+
+                    return (
+                      <div
+                        key={msg._id}
+                        className="relative p-3 bg-white border rounded-lg hover:bg-blue-50 transition group flex items-center justify-between"
+                        onMouseEnter={() => setHoveringId(msg._id)}
+                        onMouseLeave={() => setHoveringId(null)}
                       >
-                        {url}
-                      </a>
-                      <p className="text-xs text-gray-500 mt-1">
-                        Shared by {msg.sender?.name || "Unknown"}
-                      </p>
-                    </div>
-                  );
-                })}
+                        <div>
+                          <a
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-indigo-600 hover:underline break-words text-sm font-medium"
+                          >
+                            {url}
+                          </a>
+                          <p className="text-xs text-gray-500 mt-1">
+                            Shared by {msg.sender?.name || "Unknown"}
+                          </p>
+                        </div>
+
+                        {(hoveringId === msg._id || isLinkSelecting) && (
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              const updated = selected
+                                ? selectedLinks.filter((id) => id !== msg._id)
+                                : [...selectedLinks, msg._id];
+                              setSelectedLinks(updated);
+                              setIsLinkSelecting(updated.length > 0);
+                            }}
+                            className="w-4 h-4 ml-2"
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+
               </div>
             )}
           </div>
         );
-        
+
 
       case "events":
         return (
@@ -821,13 +967,80 @@ export default function GroupInfoPanel({ conversation, onClose, setSelectedConve
           </div>
           {/* Main content */}
           <div className="flex-1 overflow-y-auto p-4">{renderMainContent()}</div>
+
+          {isBottomBarVisible && (
+            <div className="absolute bottom-0 right-0 w-[28rem] bg-white border-t border-gray-200 px-4 py-3 z-50 flex justify-between items-center shadow-lg rounded-t-xl">
+              <div className="flex items-center space-x-3">
+                <span className="text-sm font-medium text-gray-700">
+                  {activeTab === "media" && selectedMedia.length > 0 && `${selectedMedia.length} selected`}
+                  {activeTab === "files" && selectedFiles.length > 0 && `${selectedFiles.length} selected`}
+                  {activeTab === "links" && selectedLinks.length > 0 && `${selectedLinks.length} selected`}
+                </span>
+                <div className="h-4 w-px bg-gray-200"></div>
+                <button
+                  onClick={() => {
+                    setSelectedMedia([]);
+                    setSelectedFiles([]);
+                    setSelectedLinks([]);
+                    setIsMultiSelecting(false);
+                    setIsFileSelecting(false);
+                    setIsLinkSelecting(false);
+                  }}
+                  className="text-gray-500 hover:text-gray-700 text-sm font-medium hover:bg-gray-100 px-2 py-1 rounded-md transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => setShowForwardModal(true)}
+                  className="bg-blue-600 text-white px-3 py-1.5 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors flex items-center gap-1"
+                >
+                  <Send size={16} className="rotate-180" />
+                  Forward
+                </button>
+
+                <div className="relative group">
+                  <button
+                    onClick={() => {
+                      const selected =
+                        activeTab === "media" ? selectedMedia :
+                          activeTab === "files" ? selectedFiles :
+                            selectedLinks;
+
+                      const messages =
+                        activeTab === "media" ? mediaMessages :
+                          activeTab === "files" ? fileMessages :
+                            linkMessages;
+
+                      const allSentByUser = selected.every((id) => {
+                        const msg = messages.find((m) => m._id === id);
+                        return msg?.sender?._id === currentUser.id;
+                      });
+
+                      setDeleteMode(allSentByUser ? "full" : "simple");
+                      setShowDeleteModal(true);
+                    }}
+                    className="bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-md text-sm font-medium text-gray-700 transition-colors flex items-center gap-1"
+                  >
+                    <Trash2 size={16} className="text-gray-600" />
+                    Delete
+                  </button>
+
+                </div>
+              </div>
+            </div>
+          )}
+
+
         </div>
         {/* Tabs */}
         <div className="w-20 border-l flex flex-col items-center py-4 space-y-4">
           {TABS.map((tab) => (
             <button
               key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
+              onClick={() => handleTabChange(tab.key)}
               className={`flex flex-col items-center w-full py-2 ${activeTab === tab.key ? "bg-indigo-50 text-indigo-600 font-semibold" : "text-gray-600 hover:bg-gray-50"}`}
             >
               {tab.icon && <div>{tab.icon}</div>}
@@ -951,6 +1164,7 @@ export default function GroupInfoPanel({ conversation, onClose, setSelectedConve
           </div>
         </div>
       )}
+
       {showAddParticipantsModal && (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black bg-opacity-50 pt-10">
           <div className="bg-white w-full max-w-xl rounded shadow-lg p-6 relative">
@@ -1008,6 +1222,64 @@ export default function GroupInfoPanel({ conversation, onClose, setSelectedConve
           </div>
         </div>
       )}
+      {imagePreview && (
+        <div className="fixed inset-0 z-50 bg-black bg-opacity-70 flex items-center justify-center p-4">
+          <div className="relative max-w-5xl w-full max-h-full flex flex-col items-center">
+
+            {/* Top Controls Row (Zoom + Sender Info) */}
+            <div className="absolute top-4 left-1/2 transform -translate-x-1/2 flex items-center space-x-6 z-50 bg-white bg-opacity-80 rounded-full px-4 py-2 shadow-lg">
+              <div className="text-sm text-gray-800">
+                <div>{imagePreview.sender}</div>
+                <div className="text-xs text-gray-600">
+                  {new Date(imagePreview.date).toLocaleString()}
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <button onClick={() => setZoom((prev) => Math.max(prev - 0.2, 0.2))}>🔍➖</button>
+                <button
+                  onClick={() => setZoom(1)}
+                  className="px-2 py-1 border border-gray-400 rounded"
+                >
+                  🔁1:1
+                </button>
+                <button onClick={() => setZoom((prev) => Math.min(prev + 0.2, 5))}>🔍➕</button>
+              </div>
+            </div>
+
+            {/* Top right download and close */}
+            <div className="absolute top-4 right-4 flex space-x-2 z-50">
+              <a
+                href={imagePreview.url}
+                download={imagePreview.filename}
+                className="bg-white px-3 py-1 text-sm rounded shadow hover:bg-gray-100"
+              >
+                ⬇️ Download
+              </a>
+              <button
+                onClick={() => setImagePreview(null)}
+                className="bg-white px-3 py-1 text-sm rounded shadow hover:bg-gray-100"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Image Viewer */}
+            <div className="overflow-auto max-h-[80vh] border border-white rounded p-2 mt-16">
+              <img
+                src={imagePreview.url}
+                alt="Preview"
+                className="max-h-[80vh] max-w-full object-contain transition-transform"
+                style={{ transform: `scale(${zoom})` }}
+              />
+            </div>
+
+            {/* Filename below image */}
+            <p className="text-white text-sm mt-4 truncate max-w-[80vw] text-center">
+              {imagePreview.filename}
+            </p>
+          </div>
+        </div>
+      )}
 
       {previewMedia && (
         <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[100]">
@@ -1026,12 +1298,37 @@ export default function GroupInfoPanel({ conversation, onClose, setSelectedConve
           </div>
         </div>
       )}
-      {showForwardModal && selectedMedia.length > 0 && (
+      {showForwardModal && (
         <ForwardModal
-          message={selectedMediaObjects[0]} // ✅ already a Message object
-          currentUser={currentUser} // ✅ this was missing
+          messages={
+            activeTab === "media"
+              ? mediaMessages.filter((m) => selectedMedia.includes(m._id))
+              : activeTab === "files"
+                ? fileMessages.filter((m) => selectedFiles.includes(m._id))
+                : linkMessages.filter((m) => selectedLinks.includes(m._id))
+          } currentUser={currentUser} // ✅ this was missing
           onClose={() => setShowForwardModal(false)}
           setSelectedConversation={setSelectedConversation} // ✅ if needed
+        />
+      )}
+      {showDeleteModal && (
+        <MultiDeleteModal
+          isMixed={deleteMode === "simple"}
+          count={
+            activeTab === "media"
+              ? selectedMedia.length
+              : activeTab === "files"
+                ? selectedFiles.length
+                : selectedLinks.length
+          }
+          onClose={() => setShowDeleteModal(false)}
+          onDelete={(forEveryone) => {
+            // Always use updated method with correct socket
+            handleDeleteSelected(
+              deleteMode === "full" && forEveryone ? "everyone" : "me"
+            );
+            setShowDeleteModal(false);
+          }}
         />
       )}
     </>

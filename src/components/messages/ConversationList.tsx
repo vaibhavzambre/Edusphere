@@ -28,6 +28,7 @@ interface ConversationListProps {
   setConversations?: React.Dispatch<React.SetStateAction<Conversation[]>>;
   chatWindowRef: React.RefObject<ChatWindowRef>;
   fetchConversations?: () => Promise<Conversation[] | undefined>;  // <-- NEW
+  onSelectWithUnread?: (conversation: Conversation, unreadCount: number) => void; // ✅ NEW
 
 }
 
@@ -37,7 +38,8 @@ export default function ConversationList({
   selectedConversationId,
   setConversations,
   chatWindowRef,
-  fetchConversations
+  fetchConversations,
+  onSelectWithUnread
 }: ConversationListProps) {
   const { user } = useAuth();
   const currentUserId = user?.id || user?._id;
@@ -83,16 +85,6 @@ export default function ConversationList({
   const [participantSearch, setParticipantSearch] = useState("");
   const [filteredAppUsers, setFilteredAppUsers] = useState<User[]>([]);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
-  const stripDeletedLastMessage = (convs: Conversation[]) => {
-    return convs.map((c) => {
-      const msg = c.lastMessage;
-      const isDeleted = msg?.deletedBy?.includes(currentUserId);
-      return {
-        ...c,
-        lastMessage: isDeleted ? undefined : msg,
-      };
-    });
-  };
   
   useEffect(() => {
   socket.on("connect", () => {
@@ -102,21 +94,7 @@ export default function ConversationList({
     socket.off("connect");
   };
 }, []);
-// useEffect(() => {
-//   const handleDebugMessagesCleared = (data: any) => {
-//     console.log("ConversationList: Received messagesCleared event:", data);
-//   };
-  
-//   socket.on("messagesCleared", handleDebugMessagesCleared);
-//   console.log("ConversationList: messagesCleared listener registered.");
-  
-//   return () => {
-//     socket.off("messagesCleared", handleDebugMessagesCleared);
-//     console.log("ConversationList: messagesCleared listener unregistered.");
-//   };
-// }, []);
 
-  
   // ----------------------------------------
   // 3) More options (the three-dot button)
   // ----------------------------------------
@@ -554,8 +532,10 @@ export default function ConversationList({
             <button
               key={(conversation._id || conversation.id) + (conversation.lastMessage?.timestamp || '')}
               onClick={async () => {
-                onSelectConversation(conversation);
-
+                onSelectConversation(conversation as Conversation); // ✅ cast it
+                if (onSelectWithUnread) {
+                  onSelectWithUnread(conversation as Conversation, conversation.unreadCount || 0);
+                }
                 // 🧠 Only mark as read + move to top if unread
                 if (conversation.unreadCount && conversation.unreadCount > 0 && setConversations) {
                   try {

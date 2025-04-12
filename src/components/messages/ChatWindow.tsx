@@ -5,8 +5,6 @@ import {
   Paperclip,
   Send,
   Smile,
-  Edit,
-  
   FileText,
   Image,
   Video,
@@ -36,6 +34,7 @@ interface ChatWindowProps {
   setReplyToMessage?: (msg: Message | null) => void; // ✅ NEW
   fetchConversations: () => void; // ✅ NEW
   conversations: Conversation[];
+  unreadCount?: number; // ✅ coming from ConversationList
 
 }
 
@@ -58,7 +57,7 @@ const ChatWindow = forwardRef(function ChatWindow(
     setReplyToMessage,
     fetchConversations,
     conversations, // ✅ ADD THIS
-
+    unreadCount
   }: ChatWindowProps,
   ref // ✅ Add this second argument
 ) {
@@ -88,6 +87,7 @@ const ChatWindow = forwardRef(function ChatWindow(
   const [showInfoPanel, setShowInfoPanel] = useState(false);
   // Add these at the top of ChatWindow function
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  
   const unreadMessageRef = useRef<HTMLDivElement>(null);
   const [firstUnreadMessageIndex, setFirstUnreadMessageIndex] = useState<number | null>(null);
   const lastMessageRef = useRef<HTMLDivElement>(null);
@@ -95,21 +95,52 @@ const ChatWindow = forwardRef(function ChatWindow(
     isMixed: boolean;
     count: number;
   }>(null);
+  useEffect(() => {
+    lastMessageRef.current = null;
+    unreadMessageRef.current = null;
+    setFirstUnreadMessageIndex(null);
+  }, [conversation?._id]);
   
+// Add this effect to mark messages as read when they become visible
+useEffect(() => {
+  if (!conversation?._id) return;
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const messageId = entry.target.getAttribute('data-message-id');
+        if (messageId) {
+          // Find if message is unread
+          const message = messages.find(m => m._id === messageId);
+          if (message && !message.readBy?.includes(currentUser.id)) {
+            markAsRead(conversation._id);
+            computeFirstUnreadIndex(); // 🧠 NEW: recheck position
+          }
+          
+        }
+      }
+    });
+  }, { 
+    root: scrollContainerRef.current,
+    threshold: 0.5 
+  });
+
+  // Observe all message elements
+  const messageElements = document.querySelectorAll('[data-message-id]');
+  messageElements.forEach(el => observer.observe(el));
+
+  return () => observer.disconnect();
+}, [messages, conversation?._id, currentUser.id]);
   const [pinnedMessage, setPinnedMessage] = useState<Message | null>(null);
   const pinnedMessageRef = useRef<HTMLDivElement>(null);
   const [showCopiedToast, setShowCopiedToast] = useState(false);
 
   //states for forward modal 
   const [showForwardModal, setShowForwardModal] = useState(false);
-  const [forwardMessage, setForwardMessage] = useState<Message | null>(null);
-  const [allConversations, setAllConversations] = useState<Conversation[]>([]);
-  const [selectedForwardConversationIds, setSelectedForwardConversationIds] = useState<string[]>([]);
   const [messageToForward, setMessageToForward] = useState<Message[] | null>(null);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<{ url: string; filename: string } | null>(null);
   const [renderToggle, setRenderToggle] = useState(false);
-
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectedMessages, setSelectedMessages] = useState<Message[]>([]);
 
@@ -131,7 +162,58 @@ const ChatWindow = forwardRef(function ChatWindow(
     messageId: string;
     forEveryone: boolean;
   } | null>(null);
-
+  
+  const computeFirstUnreadIndex = useCallback(() => {
+    // First, filter the messages to only include those that are visible:
+    const visibleMessages = messages.filter((msg) => {
+      const deletedIds = msg.deletedBy ? msg.deletedBy.map((id: any) => String(id)) : [];
+      return !deletedIds.includes(String(currentUser.id)) && !msg.isDeletedForEveryone;
+    });
+    
+    if (typeof unreadCount === "number" && unreadCount > 0) {
+      // Calculate the index based on the number of visible messages.
+      const index = visibleMessages.length - unreadCount;
+      setFirstUnreadMessageIndex(index >= 0 ? index : null);
+      console.log("Using unreadCount prop, firstUnreadMessageIndex =", index);
+    } else {
+      // Fallback: use findIndex logic
+      const index = visibleMessages.findIndex((msg) => {
+        const senderId = String(msg.sender?._id || msg.sender?.id || msg.sender);
+        // This finds the first message from someone else that has not been marked as read.
+        return senderId !== String(currentUser.id) && (!msg.readBy || !msg.readBy.includes(currentUser.id));
+      });
+      setFirstUnreadMessageIndex(index >= 0 ? index : null);
+      console.log("Using fallback findIndex logic, firstUnreadMessageIndex =", index);
+    }
+  }, [messages, currentUser.id, unreadCount]);
+  
+  useEffect(() => {
+    console.log("ChatWindow received unreadCount:", unreadCount);
+  }, [unreadCount]);
+  
+  useEffect(() => {
+    if (!loading && messages.length > 0) {
+      if (firstUnreadMessageIndex !== null && unreadMessageRef.current) {
+        requestAnimationFrame(() => {
+          unreadMessageRef.current?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+  
+          // 🟢 Only mark as read AFTER scrolling to unread
+          markAsRead(conversation._id);
+        });
+      } else {
+        requestAnimationFrame(() => {
+          lastMessageRef.current?.scrollIntoView({ behavior: "smooth" });
+        });
+  
+        // Fallback: mark as read only if no unread separator exists
+        markAsRead(conversation._id);
+      }
+    }
+  }, [loading, messages, firstUnreadMessageIndex]);
+    
   useEffect(() => {
     socket.on("messagesCleared", (conversationId) => {
       if (conversation?._id === conversationId) fetchMessages();
@@ -141,23 +223,13 @@ const ChatWindow = forwardRef(function ChatWindow(
       socket.off("messagesCleared");
     };
   }, [conversation]);
-
   useEffect(() => {
-    if (!loading && messages.length > 0) {
-      if (firstUnreadMessageIndex !== null) {
-        unreadMessageRef.current?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        });
-      } else {
-        setTimeout(() => {
-          lastMessageRef.current?.scrollIntoView({ behavior: "smooth" });
-        }, 100);
-      }
+    const scrollContainer = scrollContainerRef.current;
+    if (scrollContainer) {
+      scrollContainer.scrollTop = scrollContainer.scrollHeight;
     }
-  }, [loading, messages, firstUnreadMessageIndex]);
-
-
+  }, [messages.length, conversation?._id]);
+  
   const handleClearReply = () => {
     setReplyTo(null);
   };
@@ -222,7 +294,23 @@ const ChatWindow = forwardRef(function ChatWindow(
     }
   }, [prefilledMessage]);
 
-
+  useEffect(() => {
+    if (!loading && messages.length > 0) {
+      if (firstUnreadMessageIndex !== null && unreadMessageRef.current) {
+        requestAnimationFrame(() => {
+          unreadMessageRef.current?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+        });
+      } else {
+        requestAnimationFrame(() => {
+          lastMessageRef.current?.scrollIntoView({ behavior: "smooth" });
+        });
+      }
+    }
+  }, [loading, messages, firstUnreadMessageIndex]);
+  
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (
@@ -255,57 +343,7 @@ const ChatWindow = forwardRef(function ChatWindow(
     };
   }, []);
 
-  const handleForward = async () => {
-    if (!forwardMessage || selectedForwardConversationIds.length === 0) return;
-
-    try {
-      const token = localStorage.getItem("token");
-
-      for (const convoId of selectedForwardConversationIds) {
-        const payload: any = {
-          conversationId: convoId,
-          content: forwardMessage.content,
-          file: forwardMessage.file,
-        };
-
-        const convo = allConversations.find(c => c._id === convoId);
-        if (convo && !convo.isGroup) {
-          const receiver = convo.participants.find(p =>
-            (p._id || p.id) !== currentUser.id
-          );
-          if (receiver) {
-            payload.receiver = receiver._id || receiver.id;
-          }
-        }
-
-        await axios.post("http://localhost:5001/api/messages/send", payload, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-      }
-
-      setShowForwardModal(false);
-      setSelectedForwardConversationIds([]);
-      setForwardMessage(null);
-    } catch (err) {
-      console.error("❌ Failed to forward message:", err);
-    }
-  };
-
-  const onForward = async (message: Message) => {
-    try {
-      const token = localStorage.getItem("token");
-      const res = await axios.get("http://localhost:5001/api/messages/conversations", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      setAllConversations(res.data);
-      setForwardMessage(message);
-      setShowForwardModal(true);
-    } catch (err) {
-      console.error("❌ Failed to load conversations for forwarding:", err);
-    }
-  };
-
+  
 
   const onStar = (message: Message) => {
     console.log("Star message:", message.content);
@@ -334,11 +372,6 @@ const ChatWindow = forwardRef(function ChatWindow(
     } catch (err) {
       console.error("❌ Failed to unpin:", err);
     }
-  };
-
-
-  const onSelect = (message: Message) => {
-    console.log("Selected message:", message.content);
   };
 
   const onShare = (message: Message) => {
@@ -393,33 +426,6 @@ const ChatWindow = forwardRef(function ChatWindow(
     }
   };
 
-
-  // ✅ Delete Message
-  // const handleDeleteMessage = async (messageId: string, forEveryone: boolean = false) => {
-  //   try {
-  //     await axios.put(
-  //       `http://localhost:5001/api/messages/delete/${messageId}`,
-  //       { forEveryone },
-  //       {
-  //         headers: {
-  //           Authorization: `Bearer ${token}`,
-  //         },
-  //       }
-  //     );
-
-  //     socket.emit("deleteMessage", { id: messageId, forEveryone, userId: currentUser.id });
-
-  //     if (forEveryone) {
-  //       setMessages((prev) => prev.filter((msg) => msg._id !== messageId));
-  //     } else {
-  //       setMessages((prev) =>
-  //         prev.filter((msg) => msg._id !== messageId || msg.deletedBy?.includes(currentUser.id))
-  //       );
-  //     }
-  //   } catch (error) {
-  //     console.error("❌ Failed to delete message:", error);
-  //   }
-  // };
   const handleDeleteMessage = async (ids: string | string[], forEveryone = false) => {
     const messageIds = Array.isArray(ids) ? ids : [ids];
     try {
@@ -488,7 +494,12 @@ const handleDeleteOnlyForMe = async (ids: string | string[]) => {
       console.error("❌ Failed to mark as read:", err);
     }
   }
-
+  useEffect(() => {
+    if (messages.length > 0 && conversation) {
+      computeFirstUnreadIndex();
+    }
+  }, [messages, conversation?._id]);
+  
   useEffect(() => {
     if (conversation) {
       fetchMessages();
@@ -607,13 +618,9 @@ const handleDeleteOnlyForMe = async (ids: string | string[]) => {
       console.log("✅ New messages fetched:", response.data);
 
       setMessages([...response.data]); // ✅ Always new reference, forces re-render
+      
       setRenderToggle(prev => !prev);
-
-      const firstUnreadIndex = response.data.findIndex(
-        (msg: Message) => !msg.readBy?.includes(currentUser.id)
-      );
-      setFirstUnreadMessageIndex(firstUnreadIndex);
-
+    
     } catch (err) {
       console.error("❌ Error fetching messages:", err);
       setError("Failed to load messages.");
@@ -682,6 +689,7 @@ const handleDeleteOnlyForMe = async (ids: string | string[]) => {
             },
           }
         );
+        response.data.readBy = [...(response.data.readBy || []), currentUser.id];
 
         const createdConvo = response.data;
         actualConversationId = createdConvo._id;
@@ -765,6 +773,7 @@ const handleDeleteOnlyForMe = async (ids: string | string[]) => {
 
   return (
     <div
+    ref={scrollContainerRef}
       className="flex-1 flex flex-col h-full bg-gray-50 max-w-full overflow-hidden">
       {/* Chat Header */}
       {/* Chat Header */}
@@ -862,9 +871,6 @@ setMessageToForward([...selectedMessages]); // ⬅️ store array
         // your original header here (e.g. conversation name bar)
       )}
 
-
-
-
       {showInfoPanel && conversation?.isGroup && (
         <GroupInfoPanel
           conversation={conversation}
@@ -928,11 +934,30 @@ setMessageToForward([...selectedMessages]); // ⬅️ store array
 
           .map((message, index) => {
             const isLast = index === messages.length - 1;
+            const isUnreadSeparator = (
+              index === firstUnreadMessageIndex &&
+              // Prevent showing separator for messages sent by the current user.
+              String(message.sender?._id || message.sender?.id || message.sender) !== String(currentUser.id)
+            );
+            
+            
             return (
+<React.Fragment key={`msg-block-${message._id}`}>
+{isUnreadSeparator && (
+  <div ref={unreadMessageRef} className="relative text-center py-2">
+    <hr className="border-t border-purple-300" />
+    <span className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 px-3 text-xs text-purple-700 bg-white">
+      Unread Messages
+    </span>
+  </div>
+)}
+
 <div
   key={message._id}
   id={`msg-${message._id}`}
-  ref={pinnedMessage?._id === message._id ? pinnedMessageRef : null}
+  ref={isLast ? lastMessageRef : null}
+  data-message-id={message._id} // ✅ This is required for IntersectionObserver
+
   className={`flex w-full max-w-full ${isSelecting ? 'pl-10 pr-4' : 'px-4'} min-w-0 items-start relative
     ${message.sender === currentUser.id || message.sender?._id === currentUser.id
       ? "justify-end" // sent → align right
@@ -1283,9 +1308,12 @@ setMessageToForward([...selectedMessages]); // ⬅️ store array
 
                 </div>
               </div>
+              </React.Fragment>
+
             );
           })}
       </div>
+      
 
       {/* File Preview Before Sending */}
       {file && (
@@ -1529,8 +1557,6 @@ setMessageToForward([...selectedMessages]); // ⬅️ store array
     setSelectedConversation={setSelectedConversation}
   />
 )}
-
-
     </div>
   );
 }); // ✅ closes forwardRef
