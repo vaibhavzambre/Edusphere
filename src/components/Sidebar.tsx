@@ -65,9 +65,11 @@ const Sidebar: React.FC = () => {
           { icon: BookOpen, label: "Subjects", path: "/classes/subjects" },
           { icon: Briefcase, label: "Jobs", path: "/jobs" },
           { icon: Megaphone, label: "Announcements", path: "/AnnouncementsStudent" },
-          { icon: ClipboardCheck, label: "Assignment", path: "/assignments" },
+          { icon: ClipboardCheck, label: "Assignment", path: "/StudentAssignments" },
           { icon: FileText, label: "Resources", path: "/StudentResources" },
 
+
+          
         ]
       : []),
 
@@ -78,6 +80,7 @@ const Sidebar: React.FC = () => {
           { icon: BookOpen, label: "Subjects", path: "/classes/subjects" },
           { icon: FileText, label: 'Resources', path: '/TeacherResources' },
           { icon: Megaphone, label: "Announcements", path: "/AnnouncementsTeacher" },
+          { icon: ClipboardCheck, label: "Assignment", path: "/TeacherAssignments" },
 
         ]
       : []),

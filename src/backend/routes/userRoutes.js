@@ -19,7 +19,7 @@ router.get("/all", authMiddleware, async (req, res) => {
  * @desc    Fetch all students with their SAP ID
  * @access  Private (Only authenticated users)
  */
-router.get("/students", authMiddleware,checkAdmin, async (req, res) => {
+router.get("/students", authMiddleware, async (req, res) => {
   try {
     const students = await User.find({ role: "student" })
       .populate({

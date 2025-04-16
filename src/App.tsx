@@ -25,6 +25,10 @@ import AnnouncementsStudent from "./pages/AnnouncementsStudent";
 import AnnouncementsTeacher from "./pages/AnnouncementsTeacher";
 import TeacherResources from "./pages/TeacherResources";
 import StudentResources from "./pages/StudentResources";
+import TeacherAssignments from "./pages/TeacherAssignments";
+import AssignmentDetailPage from "./pages/AssignmentDetailPage";
+import StudentAssignments from "./pages/StudentAssignments";
+import StudentAssignmentDetail from "./pages/StudentAssignmentDetail";
 
 const mockAttendance = [
   { course: "Web Development", date: "2024-03-10", status: "present" },
@@ -78,6 +82,19 @@ function App() {
               />
             }
           />
+          TeacherAssignments
+          <Route
+            path="/TeacherAssignments"
+            element={
+              <ProtectedRoute
+                element={
+                  <ProtectedLayout>
+                    <TeacherAssignments />
+                  </ProtectedLayout>
+                }
+              />
+            }
+          />
           <Route
             path="/attendance"
             element={
@@ -90,7 +107,44 @@ function App() {
               />
             }
           />
-          
+                <Route
+  path="/assignments/:assignmentId"
+  element={
+    <ProtectedRoute
+      element={
+        <ProtectedLayout>
+          <AssignmentDetailPage />
+        </ProtectedLayout>
+      }
+    />
+  }
+/>
+
+<Route
+  path="/StudentAssignments"
+  element={
+    <ProtectedRoute
+      element={
+        <ProtectedLayout>
+          <StudentAssignments />
+        </ProtectedLayout>
+      }
+    />
+  }
+/>
+
+<Route
+  path="/student/assignments/:id"
+  element={
+    <ProtectedRoute
+      element={
+        <ProtectedLayout>
+          <StudentAssignmentDetail />
+        </ProtectedLayout>
+      }
+    />
+  }
+/>
           <Route
             path="/TeacherResources"
             element={
