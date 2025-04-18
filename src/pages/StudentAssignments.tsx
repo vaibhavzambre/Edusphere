@@ -51,39 +51,44 @@ function StudentAssignments() {
       try {
         const token = localStorage.getItem("token");
         const res = await axios.get(
-          "http://localhost:5001/api/assignments/student",
+          "http://localhost:5001/api/assignments/student", 
           {
-            headers: { Authorization: `Bearer ${token}` },
+            headers: { Authorization: `Bearer ${token}` }
           }
         );
+        console.log("Assignments data:", res.data); // Debug response
         setAssignments(res.data || []);
       } catch (error) {
-        console.error("Failed to fetch assignments", error);
-        toast.error("Failed to load assignments");
+        console.error("Full error:", error); // More detailed error logging
+        console.error("Error response:", error.response?.data); // API error details
+        toast.error(error.response?.data?.message || "Failed to load assignments");
       }
     };
     fetchAssignments();
   }, []);
-
   const filtered = assignments.filter((a) => {
     const now = new Date();
     const dueDate = new Date(a.dueDate);
-    const submitted = a.submissions?.find((s: any) => s.student === user._id);
-
+    const isSubmitted = a.isSubmitted; // Use the isSubmitted flag from backend
+  
     if (activeTab === "completed") {
-      return !!submitted;
+      return isSubmitted;
     }
+  
     if (activeTab === "pastdue") {
-      return dueDate < now && !submitted;
+      return dueDate < now && !isSubmitted;
     }
-    return dueDate >= now && !submitted;
+  
+    // activeTab === "forecoming" (upcoming)
+    return dueDate >= now && !isSubmitted;
   });
-
-  const getStatusBadge = (dueDate: Date, submitted: boolean) => {
+  
+  const getStatusBadge = (dueDate: Date, isSubmitted: boolean) => {
     const now = new Date();
     const due = new Date(dueDate);
-
-    if (submitted) {
+  
+    // Submitted assignments should always show as submitted
+    if (isSubmitted) {
       return (
         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
           <CheckCircle className="mr-1 h-3 w-3" />
@@ -91,7 +96,8 @@ function StudentAssignments() {
         </span>
       );
     }
-
+  
+    // Only check due date for non-submitted assignments
     if (due < now) {
       return (
         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
@@ -100,7 +106,7 @@ function StudentAssignments() {
         </span>
       );
     }
-
+  
     return (
       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
         <Clock className="mr-1 h-3 w-3" />
@@ -108,7 +114,6 @@ function StudentAssignments() {
       </span>
     );
   };
-
   return (
     <div
       // You can remove `max-w-7xl mx-auto px-4` if you want the cards to stretch
@@ -191,7 +196,7 @@ function StudentAssignments() {
                   {/* Reduce the card padding from p-6 to p-4 to make it less tall */}
                   <div className="p-4 space-y-2">
                     {/* Status Badge */}
-                    {getStatusBadge(assignment.dueDate, !!submission)}
+                    {getStatusBadge(assignment.dueDate, assignment.isSubmitted)}
 
                     {/* Title and Description */}
                     <div>

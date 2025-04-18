@@ -4,11 +4,14 @@ import express from "express";
 import Assignment from "../models/Assignment.js";
 import {
   authMiddleware,
-  checkTeacher,
+  checkTeacher, 
 } from "../middleware/authMiddleware.js";
 import { GridFSBucket } from "mongodb";
 import mongoose from "mongoose";
 import Submission from "../models/Submission.js"; // ✅ Add this line
+import Student from "../models/Student.js";
+import User from "../models/User.js";
+import ExcelJS from 'exceljs';
 
 const router = express.Router();
 router.post("/create", authMiddleware, async (req, res) => {
@@ -56,21 +59,110 @@ router.post("/create", authMiddleware, async (req, res) => {
 });
 
 // GET /api/assignments/student - get assignments for a student
+ // Add to assignmentRoutes.js (file metadata endpoint)
+router.get("/file/:id/metadata", async (req, res) => {
+  try {
+    const fileId = new mongoose.Types.ObjectId(req.params.id);
+    const bucket = new mongoose.mongo.GridFSBucket(mongoose.connection.db, {
+      bucketName: "uploads",
+    });
+
+    const files = await bucket.find({ _id: fileId }).toArray();
+    if (!files.length) return res.status(404).json({ error: "File not found" });
+    
+    res.json({
+      filename: files[0].filename,
+      contentType: files[0].contentType,
+      uploadDate: files[0].uploadDate
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+// Add to assignmentRoutes.js
+// sr/backend/routes/assignments.js - Add export route
+
+router.get('/:id/export', async (req, res) => {
+  try {
+    const assignment = await Assignment.findById(req.params.id)
+      .populate('submissions')
+      .populate('submissions.student');
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Submissions');
+
+    // Worksheet headers
+    worksheet.columns = [
+      { header: 'Student Name', key: 'name' },
+      { header: 'SAP ID', key: 'sapId' },
+      { header: 'Submission Date', key: 'date' },
+      { header: 'Grade', key: 'grade' },
+      { header: 'Feedback', key: 'feedback' }
+    ];
+
+    // Add data rows
+    assignment.submissions.forEach(sub => {
+      worksheet.addRow({
+        name: sub.student.name,
+        sapId: sub.student.profile?.sap_id || 'N/A',
+        date: new Date(sub.submittedAt).toLocaleString(),
+        grade: sub.grade || 'Not graded',
+        feedback: sub.feedback || ''
+      });
+    });
+
+    // Set response headers
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename=grades_${assignment.title}.xlsx`
+    );
+
+    // Send the workbook
+    await workbook.xlsx.write(res);
+    res.end();
+    
+  } catch (err) {
+    console.error('Export error:', err);
+    res.status(500).json({ error: 'Export failed' });
+  }
+});
 router.get("/student", authMiddleware, async (req, res) => {
-  const studentId = req.user.id;
+  const userId = req.user.id;
 
   try {
+    // 🧠 Step 1: Get full User object to extract 'profile'
+    const user = await User.findById(userId);
+    if (!user || user.role !== "student" || !user.profile) {
+      return res.status(404).json({ message: "Student profile not found" });
+    }
+
+    // 🧠 Step 2: Get student document from the profile ref
+    const studentProfile = await Student.findById(user.profile);
+    if (!studentProfile) {
+      return res.status(404).json({ message: "Student profile not found" });
+    }
+
+    const studentClassId = studentProfile.class;
+
+    // 🧠 Step 3: Get assignments either for the class or directly assigned
     const assignments = await Assignment.find({
       $or: [
-        { classes: { $in: req.user.classIds || [] } },
-        { assignedTo: studentId }
+        { classes: studentClassId },
+        { assignedTo: userId }
       ]
     }).sort({ dueDate: 1 });
 
-    const submissions = await Submission.find({ student: studentId });
+    // 🧠 Step 4: Get submissions by this student
+    const submissions = await Submission.find({ student: userId });
 
     const enriched = assignments.map((assignment) => {
-      const submission = submissions.find((s) => s.assignment.toString() === assignment._id.toString());
+      const submission = submissions.find(
+        (s) => s.assignment.toString() === assignment._id.toString()
+      );
       return {
         ...assignment.toObject(),
         isSubmitted: !!submission,
@@ -145,6 +237,7 @@ router.get("/teacher", authMiddleware, checkTeacher, async (req, res) => {
 // ✅ NEW ROUTE: Get assignment by ID
 // assignmentRoutes.js
 
+// Update the GET /:id route to populate file metadata
 router.get('/:id', authMiddleware, async (req, res) => {
   try {
     const assignment = await Assignment.findById(req.params.id)
@@ -155,19 +248,48 @@ router.get('/:id', authMiddleware, async (req, res) => {
       return res.status(404).json({ message: 'Assignment not found' });
     }
 
-    // ✅ Fetch the student's submission separately
+    // Add file metadata for resources
+    const bucket = new mongoose.mongo.GridFSBucket(mongoose.connection.db, {
+      bucketName: "uploads",
+    });
+
+    // Get resource files metadata
+    assignment.files = await Promise.all(
+      assignment.files.map(async (fileId) => {
+        const files = await bucket.find({ _id: fileId }).toArray();
+        return {
+          _id: fileId,
+          filename: files[0]?.filename || `Resource File`,
+          contentType: files[0]?.contentType
+        };
+      })
+    );
+
+    // Get submission data with file metadata
     const submission = await Submission.findOne({
       assignment: assignment._id,
       student: req.user.id,
     }).lean();
 
-    return res.json({ ...assignment, submission }); // ✅ Inject submission into frontend response
+    if (submission?.file) {
+      submission.file = await Promise.all(
+        submission.file.map(async (fileId) => {
+          const files = await bucket.find({ _id: fileId }).toArray();
+          return {
+            _id: fileId,
+            filename: files[0]?.filename || `Submission File`,
+            contentType: files[0]?.contentType
+          };
+        })
+      );
+    }
+
+    return res.json({ ...assignment, submission });
   } catch (err) {
-    console.error("❌ Error fetching assignment by ID:", err);
+    console.error("Error fetching assignment:", err);
     res.status(500).json({ message: 'Server error' });
   }
 });
-
 // ✅ NEW: Get metadata for a file uploaded with assignment
 router.get("/file/:id/metadata", async (req, res) => {
   try {

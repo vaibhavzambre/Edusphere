@@ -238,6 +238,17 @@ else {
             select: "name avatar",
           },
         })
+        .populate({
+          path: 'replyTo',
+          populate: { path: 'sender', select: 'name' }
+        }).populate({
+          path: 'replyTo',
+          populate: {
+            path: 'conversationId',
+            select: 'isGroup groupName'
+          }
+        })
+        .populate('sender', 'name avatar')
         .sort({ timestamp: 1 });
 
       res.json(messages);

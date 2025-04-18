@@ -21,13 +21,6 @@ replyTo: {
   ref: 'Message',
   default: null,
 },
-// In Message.js (Mongoose model)
-// In models/Conversation.js
-// pinnedMessage: {
-//   type: mongoose.Schema.Types.ObjectId,
-//   ref: 'Message',
-//   default: null,
-// },
 
 reactions: [
   {

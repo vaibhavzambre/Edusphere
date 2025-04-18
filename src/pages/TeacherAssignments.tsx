@@ -1,14 +1,14 @@
-// UPDATED FILE: src/pages/TeacherAssignments.tsx
 import React, { useState, useEffect } from "react";
 import { Plus, AlertCircle, CalendarClock, BookOpen, FileText, ClipboardCheck, ArrowRight } from "lucide-react";
 import AssignmentFormModal from "../components/assignment/AssignmentFormModal";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-hot-toast";
-// Removed the import of cn and instead define it locally:
+
 const cn = (...classes: (string | undefined | false)[]): string => {
   return classes.filter(Boolean).join(" ");
 };
+
 function TeacherAssignments() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -46,8 +46,8 @@ function TeacherAssignments() {
 
   const getStatusStyle = (status) => {
     switch (status) {
-      case "Active": return "bg-emerald-100 text-emerald-700";
-      case "Draft": return "bg-amber-100 text-amber-700";
+      // case "Active": return "bg-emerald-100 text-emerald-700";
+      // case "Draft": return "bg-amber-100 text-amber-700";
       default: return "bg-gray-100 text-gray-700";
     }
   };
@@ -90,7 +90,6 @@ function TeacherAssignments() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {filteredAssignments.map((assignment) => {
           const dueDate = new Date(assignment.dueDate);
-          const submissionsProgress = ((assignment.submittedCount || 0) / (assignment.totalCount || 1)) * 100;
 
           return (
             <div
@@ -112,7 +111,7 @@ function TeacherAssignments() {
                       "text-xs font-medium px-2 py-1 rounded-full",
                       getStatusStyle(assignment.status)
                     )}>
-                      {assignment.status || "Draft"}
+                      {/* {assignment.status || "Draft"} */}
                     </span>
                   </div>
                   <span className="text-xs text-gray-500">
@@ -131,20 +130,9 @@ function TeacherAssignments() {
                     <CalendarClock size={16} />
                     <span>Due: {dueDate.toLocaleDateString()} • {dueDate.toLocaleTimeString()}</span>
                   </div>
-                </div>
-
-                {/* Progress Bar */}
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm font-medium">
-                    <span className="text-blue-600">Submissions</span>
-                    <span>{assignment.submittedCount || 0}/{assignment.totalCount || 0}</span>
-                  </div>
-                  <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-blue-600 rounded-full transition-all"
-                      style={{ width: `${submissionsProgress}%` }}
-                    />
-                  </div>
+                  {/* <div className="text-sm text-gray-600">
+                    Submissions: {assignment.submittedCount || 0}/{assignment.totalCount || 0}
+                  </div> */}
                 </div>
 
                 {/* Footer */}

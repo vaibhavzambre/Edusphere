@@ -7,7 +7,37 @@ import Submission from "../models/Submission.js";
 import { authMiddleware } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
+// Add to submissionRoutes.js
 
+// GET submissions for an assignment
+router.get("/", authMiddleware, async (req, res) => {
+  try {
+    const { assignment } = req.query;
+    const submissions = await Submission.find({ assignment })
+      .populate('student', 'name email profile')
+      .lean();
+    res.json(submissions);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// UPDATE submission (grading)
+router.patch("/:id", authMiddleware, async (req, res) => {
+  try {
+    const { grade, feedback, status } = req.body;
+    const submission = await Submission.findByIdAndUpdate(
+      req.params.id,
+      { grade, feedback, status },
+      { new: true }
+    ).populate('student', 'name email profile');
+    
+    if (!submission) return res.status(404).json({ error: "Submission not found" });
+    res.json(submission);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 // ✅ POST /api/submissions/:assignmentId - Submit assignment with multiple files
 router.post("/:assignmentId", authMiddleware, async (req, res) => {
   try {

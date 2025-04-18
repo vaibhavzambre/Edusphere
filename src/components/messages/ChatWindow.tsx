@@ -1,5 +1,6 @@
 import React, {
-  useEffect, useCallback, useState, useRef, useImperativeHandle, forwardRef
+  useEffect, useCallback, useState, useRef, useImperativeHandle, forwardRef,
+  useMemo
 } from "react";
 import {
   Paperclip,
@@ -95,6 +96,103 @@ const ChatWindow = forwardRef(function ChatWindow(
     isMixed: boolean;
     count: number;
   }>(null);
+
+
+// Add this state at the top of ChatWindow
+const [messageToHighlight, setMessageToHighlight] = useState<string | null>(null);
+
+// Add this useEffect for handling scroll-to-highlight
+useEffect(() => {
+  if (messageToHighlight) {
+    const element = document.getElementById(`msg-${messageToHighlight}`);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      element.classList.add('animate-ping-highlight');
+      setTimeout(() => {
+        element.classList.remove('animate-ping-highlight');
+        setMessageToHighlight(null);
+      }, 2000);
+    }
+  }
+}, [messages, messageToHighlight]);
+
+// Add this state
+const [switchingConvo, setSwitchingConvo] = useState(false);
+
+// Add this handler for reply clicks
+const handleReplyClick = async (replyToMessage: Message) => {
+  if (!replyToMessage) return;
+
+  try {
+    const token = localStorage.getItem("token");
+    if (!token) throw new Error("No authentication token found");
+
+    // Safely extract conversation ID
+    const conversationId = replyToMessage.conversationId
+      ? (typeof replyToMessage.conversationId === 'object' 
+          ? replyToMessage.conversationId._id?.toString()
+          : replyToMessage.conversationId.toString())
+      : null;
+
+    if (!conversationId) {
+      throw new Error("Invalid conversation reference in message");
+    }
+
+    // Get original conversation details
+    const { data: originalConvo } = await axios.get(
+      `http://localhost:5001/api/messages/conversation/${conversationId}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        params: { populate: "participants" }
+      }
+    );
+
+    // Add null checks for participants array
+    if (!originalConvo?.participants?.length) {
+      throw new Error("No participants found in conversation");
+    }
+
+    // Find other participant with optional chaining
+    const otherParticipant = originalConvo.participants.find(
+      (p: any) => p?._id?.toString() !== currentUser?.id?.toString()
+    ) ?? null; // Nullish coalescing as fallback
+
+    if (!otherParticipant) {
+      throw new Error("Could not identify conversation participant");
+    }
+
+    // Rest of the function remains the same
+    const { data: targetConvo } = await axios.post(
+      "http://localhost:5001/api/messages/find-or-create",
+      { participantId: otherParticipant._id },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+
+    setSelectedConversation(targetConvo);
+    setTimeout(() => {
+      setMessageToHighlight(replyToMessage._id);
+    }, 500);
+
+  } catch (err) {
+    console.error("Failed to handle reply click:", err);
+    // Add error notification UI here
+  }
+};
+
+// Update the otherParticipant calculation to use the same logic as reply privately
+const otherParticipant = useMemo(() => {
+  if (!conversation?.isGroup && conversation?.participants) {
+    return conversation.participants.find(
+      (p) => p?._id?.toString() !== currentUser?.id?.toString()
+    );
+  }
+  return null;
+}, [conversation, currentUser?.id]);
+
+
+
+
+  
   useEffect(() => {
     lastMessageRef.current = null;
     unreadMessageRef.current = null;
@@ -134,7 +232,12 @@ useEffect(() => {
   const [pinnedMessage, setPinnedMessage] = useState<Message | null>(null);
   const pinnedMessageRef = useRef<HTMLDivElement>(null);
   const [showCopiedToast, setShowCopiedToast] = useState(false);
-
+  useEffect(() => {
+    // Clear reply only when switching to unrelated conversations
+    if (!conversation?._replyToMessage) {
+      setReplyTo(null);
+    }
+  }, [conversation?._id]);
   //states for forward modal 
   const [showForwardModal, setShowForwardModal] = useState(false);
   const [messageToForward, setMessageToForward] = useState<Message[] | null>(null);
@@ -152,9 +255,7 @@ useEffect(() => {
     setZoom(1); // reset zoom on close
   };
 
-  const handleImagePreview = (url: string) => {
-    setPreviewImageUrl(url);
-  };
+
   const [zoom, setZoom] = useState(1);
 
   //for delete confirmation
@@ -230,61 +331,55 @@ useEffect(() => {
     }
   }, [messages.length, conversation?._id]);
   
-  const handleClearReply = () => {
-    setReplyTo(null);
-  };
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
 
 
   // 👇 ADD THIS RIGHT HERE
-  const otherParticipant = !conversation?.isGroup
-    ? conversation?.participants.find(
-      (p) =>
-        (p._id?.toString() || p.id?.toString()) !==
-        (currentUser.id?.toString() || currentUser._id?.toString())
-    )
-    : null;
-
-  // Placeholder handlers for dropdown options
-  const onReply = (message: Message) => {
-    setReplyTo(message);
-  };
-
-  // const onReplyPrivately = (message: Message) => {
-  //   if (!conversation?.isGroup) return; // no private reply in 1-1
-  //   // Create 1-1 conversation logic (optional enhancement later)
-  //   setReplyTo(message); // For now, treat it as normal reply
-  // };
+// 👇 Safe otherParticipant calculation with null checks
+// const otherParticipant = !conversation?.isGroup && conversation?.participants
+//   ? conversation.participants.find(
+//       (p) => p && (
+//         (p._id?.toString() || p.id?.toString()) !== 
+//         (currentUser?.id?.toString() || currentUser?._id?.toString())
+//       )
+//     ) || null
+//   : null;
+  // Placeholder handlers for dropdown option
+  // Update the onReplyPrivately handler
   const onReplyPrivately = async (message: Message) => {
     const senderId = message.sender;
     if (senderId === currentUser.id) return;
-
+  
     try {
       const token = localStorage.getItem("token");
-
-      // 1. Find or create conversation with this user
       const response = await axios.post(
         "http://localhost:5001/api/messages/find-or-create",
         { participantId: senderId },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-
-      const oneToOneConvo = response.data;
-
-      // 2. Switch chat window to that conversation
-      ; // Clear any old prefilled text
+      
+      const oneToOneConvo = {
+        ...response.data,
+        _replyToMessage: {
+          ...message,
+          // Add group context
+          originalConversationId: conversation?._id,
+          originalConversationName: conversation?.groupName,
+          originalConversationIsGroup: conversation?.isGroup,
+          originalSender: message.sender
+        }
+      };
+  
       setSelectedConversation(oneToOneConvo);
-      setReplyToMessage(message); // ✅ This works now across remount
-      setPrefilledMessage("");    // ✅ don't use input text
-
-
+      setReplyTo(message);
+      setPrefilledMessage("");
+  
     } catch (err) {
       console.error("Failed to initiate private reply:", err);
     }
   };
-
   useEffect(() => {
 
     if (prefilledMessage) {
@@ -942,7 +1037,9 @@ setMessageToForward([...selectedMessages]); // ⬅️ store array
             
             
             return (
+              
 <React.Fragment key={`msg-block-${message._id}`}>
+                
 {isUnreadSeparator && (
   <div ref={unreadMessageRef} className="relative text-center py-2">
     <hr className="border-t border-purple-300" />
@@ -951,21 +1048,6 @@ setMessageToForward([...selectedMessages]); // ⬅️ store array
     </span>
   </div>
 )}
-
-<div
-  key={message._id}
-  id={`msg-${message._id}`}
-  ref={isLast ? lastMessageRef : null}
-  data-message-id={message._id} // ✅ This is required for IntersectionObserver
-
-  className={`flex w-full max-w-full ${isSelecting ? 'pl-10 pr-4' : 'px-4'} min-w-0 items-start relative
-    ${message.sender === currentUser.id || message.sender?._id === currentUser.id
-      ? "justify-end" // sent → align right
-      : "justify-start" // received → align left
-    }`}
-  onMouseEnter={() => setHoveredMessageId(message._id)}
-  onMouseLeave={() => setHoveredMessageId(null)}
->
 
                 {/* Checkbox column - always present but hidden when not selecting */}
                 {isSelecting && (
@@ -987,13 +1069,78 @@ setMessageToForward([...selectedMessages]); // ⬅️ store array
   </div>
 )}
 
-          
+<div
+  key={message._id}
+  id={`msg-${message._id}`}
+  ref={isLast ? lastMessageRef : null}
+  data-message-id={message._id}
+  className={`flex w-full max-w-full ${isSelecting ? 'pl-10 pr-4' : 'px-4'} min-w-0 flex-col relative
+    ${message.sender === currentUser.id || message.sender?._id === currentUser.id
+      ? "items-end" // sent → align right
+      : "items-start" // received → align left
+    }`}
+  onMouseEnter={() => setHoveredMessageId(message._id)}
+  onMouseLeave={() => setHoveredMessageId(null)}
+>
+  {/* Reply Preview - Now ABOVE the message bubble */}
+  {message.replyTo && (
+  <div 
+  onClick={() => handleReplyClick(message.replyTo)}
+
+  className={`mb-1 p-2 rounded-lg bg-indigo-50/80 border border-indigo-100 max-w-[85%] ${
+    (message.sender?._id || message.sender?.id || message.sender) === currentUser.id 
+      ? "mr-2" 
+      : "ml-2"
+  }`}>
+    <div className="flex items-center gap-1 text-xs">
+      
+      <span className="font-medium text-indigo-700">
+        {!conversation?.isGroup && message.replyTo.conversationId?.isGroup ? (
+          // Show group context only in private chats
+          <>
+            {message.replyTo.sender?._id === currentUser.id ? "You" : message.replyTo.sender?.name}
+            <span className="text-gray-500 mx-1">in</span>
+            <span className="text-indigo-600">
+              {message.replyTo.conversationId?.groupName}
+            </span>
+          </>
+        ) : (
+          // Always show just sender name in group chats
+          message.replyTo.sender?._id === currentUser.id 
+            ? "You" 
+            : message.replyTo.sender?.name
+        )}
+      </span>
+    </div>
+    <div className="text-xs truncate max-w-[300px] mt-1 text-gray-700">
+      {message.replyTo.file ? (
+        <span className="flex items-center gap-1">
+          {message.replyTo.file.type.startsWith("image/") ? (
+            <span>📷 Photo</span>
+          ) : message.replyTo.file.type.startsWith("video/") ? (
+            <span>🎥 Video</span>
+          ) : (
+            <span>📄 Document</span>
+          )}
+          {message.replyTo.file.name && (
+            <span className="truncate">{message.replyTo.file.name}</span>
+          )}
+        </span>
+      ) : (
+        message.replyTo.content || "Message"
+      )}
+    </div>
+  </div>
+)}
+
                 {/* Rest of your message bubble code remains unchanged */}
                 <div className={`relative max-w-[min(85%,_500px)] p-3 rounded-lg ${
                   (message.sender?._id || message.sender?.id || message.sender) === currentUser.id
                     ? 'bg-indigo-600 text-white'
                     : 'bg-gray-100 text-gray-900'
                 }`}>
+
+                  
                   {/* Sender Name (group only) */}
                   {conversation?.isGroup && (message.sender?._id || message.sender?.id) !== currentUser.id && (
                     <p className="text-xs font-semibold mb-1 opacity-75 text-gray-700">
@@ -1138,7 +1285,7 @@ setMessageToForward([...selectedMessages]); // ⬅️ store array
 
                       )}
 
-                      <button onClick={() => onStar(message)} className="block w-full px-4 py-2 hover:bg-gray-100 text-left">⭐ Star</button>
+                 {/*     <button onClick={() => onStar(message)} className="block w-full px-4 py-2 hover:bg-gray-100 text-left">⭐ Star</button> */}
                       <button onClick={() => onPin(message)} className="block w-full px-4 py-2 hover:bg-gray-100 text-left">📌 Pin</button>
 
                       {(message.sender?._id || message.sender?.id || message.sender) === currentUser.id ? (
@@ -1186,7 +1333,7 @@ setMessageToForward([...selectedMessages]); // ⬅️ store array
                       >
                         ✅ Select
                       </button>
-                      <button onClick={() => onShare(message)} className="block w-full px-4 py-2 hover:bg-gray-100 text-left">📤 Share</button>
+                      {/*<button onClick={() => onShare(message)} className="block w-full px-4 py-2 hover:bg-gray-100 text-left">📤 Share</button> */}
 
                       {/* Emoji Reactions */}
                       <div className="px-3 py-2 border-t">
@@ -1335,21 +1482,57 @@ setMessageToForward([...selectedMessages]); // ⬅️ store array
           </button>
         </div>
       )}
-      {replyTo && (
-        <div className="bg-gray-100 border-l-4 border-indigo-500 p-2 mb-2 rounded relative">
-          <p className="text-xs text-gray-500">
-            Replying to {replyTo.sender === currentUser.id ? "yourself" : replyTo.sender?.name || "Someone"}
-          </p>
-
-          <p className="text-sm italic text-gray-800 truncate">{replyTo.content}</p>
-          <button
-            onClick={() => setReplyTo(null)}
-            className="absolute top-1 right-2 text-gray-400 hover:text-red-500"
-          >
-            ✕
-          </button>
+{replyTo && (
+  <div className="bg-indigo-50 border-l-4 border-indigo-500 p-3 mb-3 rounded-lg relative">
+    <div className="flex justify-between items-start">
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-medium text-indigo-700 mb-1">
+          {conversation?.isGroup ? (
+            <>
+              Replying to {replyTo.sender === currentUser.id ? "yourself" : replyTo.sender?.name || "Someone"}
+              <span className="text-gray-500 mx-1">·</span>
+              <span className="text-indigo-600">{conversation.groupName}</span>
+            </>
+          ) : (
+            `Replying to ${replyTo.sender === currentUser.id ? "yourself" : otherParticipant?.name || "Someone"}`
+          )}
+        </p>
+        
+        <div className="text-sm text-gray-800 truncate">
+          {replyTo.file ? (
+            <div className="flex items-center gap-2">
+              {replyTo.file.type?.startsWith("image/") ? (
+                <>
+                  <span>📷</span>
+                  <span>{replyTo.file.name || "Photo"}</span>
+                </>
+              ) : replyTo.file.type?.startsWith("video/") ? (
+                <>
+                  <span>🎬</span>
+                  <span>{replyTo.file.name || "Video"}</span>
+                </>
+              ) : (
+                <>
+                  <span>📄</span>
+                  <span>{replyTo.file.name || "Document"}</span>
+                </>
+              )}
+            </div>
+          ) : (
+            replyTo.content
+          )}
         </div>
-      )}
+      </div>
+      
+      <button
+        onClick={() => setReplyTo(null)}
+        className="text-gray-500 hover:text-red-500 ml-2"
+      >
+        <X className="w-4 h-4" />
+      </button>
+    </div>
+  </div>
+)}
 
       {/* Message Input */}
       <div className="p-4 border-t border-gray-200 bg-white flex items-center space-x-3 w-full">

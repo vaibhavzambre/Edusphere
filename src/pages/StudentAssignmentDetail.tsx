@@ -139,6 +139,7 @@ if (data?.submission) {
 
   return (
     <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
+      
     {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
         <button
@@ -150,6 +151,7 @@ if (data?.submission) {
         </button>
         {!closeDatePassed && (
   <>
+  
     {!isSubmitted && (
       <button
         onClick={handleSubmit}
@@ -202,7 +204,20 @@ if (data?.submission) {
           ))}
         </div>
       </div>
-
+{isSubmitted && submission?.grade !== undefined && (
+  <div className="bg-emerald-50 p-4 rounded-lg mb-4">
+    <h3 className="font-semibold text-emerald-700 flex items-center gap-2">
+      <CheckCircle size={18} />
+      Graded: {submission.grade}/{assignment.points} points
+    </h3>
+    {submission.feedback && (
+      <div className="mt-2">
+        <p className="font-medium">Feedback:</p>
+        <p className="text-gray-700">{submission.feedback}</p>
+      </div>
+    )}
+  </div>
+)}
       {/* Description */}
       <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4 shadow-sm">
         <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">

@@ -387,14 +387,13 @@ const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
                 <div>
                   <label className="block text-sm font-medium mb-1">Points</label>
                   <input
-                    type="number"
-                    name="points"
-                    value={formData.points}
-
-                    onChange={handleChange}
-                    className="w-full px-3 py-2 border rounded-lg"
-                    placeholder="Enter points"
-                  />
+      type="number"
+      required
+      min="1"
+      value={formData.points}
+      onChange={(e) => setFormData({...formData, points: parseInt(e.target.value)})}
+      className="w-full p-2 border rounded-md"
+    />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Category</label>
