@@ -180,19 +180,15 @@ const handleReplyClick = async (replyToMessage: Message) => {
 };
 
 // Update the otherParticipant calculation to use the same logic as reply privately
-const otherParticipant = useMemo(() => {
-  if (!conversation?.isGroup && conversation?.participants) {
-    return conversation.participants.find(
-      (p) => p?._id?.toString() !== currentUser?.id?.toString()
-    );
-  }
-  return null;
-}, [conversation, currentUser?.id]);
+// const otherParticipant = useMemo(() => {
+//   if (!conversation?.isGroup && conversation?.participants) {
+//     return conversation.participants.find(
+//       (p) => p?._id?.toString() !== currentUser?.id?.toString()
+//     );
+//   }
+//   return null;
+// }, [conversation, currentUser?.id]);
 
-
-
-
-  
   useEffect(() => {
     lastMessageRef.current = null;
     unreadMessageRef.current = null;
@@ -338,14 +334,14 @@ useEffect(() => {
 
   // 👇 ADD THIS RIGHT HERE
 // 👇 Safe otherParticipant calculation with null checks
-// const otherParticipant = !conversation?.isGroup && conversation?.participants
-//   ? conversation.participants.find(
-//       (p) => p && (
-//         (p._id?.toString() || p.id?.toString()) !== 
-//         (currentUser?.id?.toString() || currentUser?._id?.toString())
-//       )
-//     ) || null
-//   : null;
+const otherParticipant = !conversation?.isGroup && conversation?.participants
+  ? conversation.participants.find(
+      (p) => p && (
+        (p._id?.toString() || p.id?.toString()) !== 
+        (currentUser?.id?.toString() || currentUser?._id?.toString())
+      )
+    ) || null
+  : null;
   // Placeholder handlers for dropdown option
   // Update the onReplyPrivately handler
   const onReplyPrivately = async (message: Message) => {

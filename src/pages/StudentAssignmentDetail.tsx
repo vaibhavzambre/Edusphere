@@ -32,7 +32,62 @@ const StudentAssignmentDetail = () => {
 const [submissionId, setSubmissionId] = useState<string | null>(null);
 const [closeDatePassed, setCloseDatePassed] = useState(false);
 const [submission, setSubmission] = useState<any>(null); // stores actual submission document
+const handleDownload = async (fileData: any) => {
+  try {
+    // Extract ID from different possible formats
+    let fileId = "";
+    
+    if (typeof fileData === "string") {
+      fileId = fileData;
+    } else if (fileData?._id) {
+      fileId = fileData._id.toString();
+    } else if (fileData?.fileId) {
+      fileId = fileData.fileId.toString();
+    } else {
+      throw new Error("Invalid file data structure");
+    }
 
+    // Validate ID format
+    if (!/^[0-9a-fA-F]{24}$/.test(fileId)) {
+      throw new Error(`Invalid file ID format: ${fileId}`);
+    }
+
+    const token = localStorage.getItem("token");
+    const response = await fetch(
+      `http://localhost:5001/api/assignments/download/${fileId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || "Download failed");
+    }
+
+    // Extract filename from headers
+    const contentDisposition = response.headers.get("Content-Disposition") || "";
+    const filenameMatch = contentDisposition.match(/filename="?(.+?)"?(;|$)/);
+    const filename = filenameMatch ? filenameMatch[1] : `file-${fileId}`;
+
+    // Create download
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+
+  } catch (error) {
+    console.error("Download error:", error);
+    toast.error(error.message || "Failed to download file");
+  }
+};
   useEffect(() => {
     const fetchAssignment = async () => {
       try {
@@ -248,34 +303,50 @@ if (data?.submission) {
             </a>
           ))}
 
-          {assignment.files?.map((fileId: string, i: number) => (
-            <a
-              key={i}
-              href={`http://localhost:5001/api/attachments/${fileId}`}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-2 text-blue-600 hover:text-blue-700 mb-2"
-            >
-              <DownloadCloud size={16} />
-              Download Resource File #{i + 1}
-            </a>
-          ))}
+{assignment.files?.map((file: any) => (
+  <button
+    key={file._id}
+    onClick={() => handleDownload(file._id)}
+    className="flex items-center gap-2 text-blue-600 hover:text-blue-700 mb-2"
+  >
+    <DownloadCloud size={16} />
+    {file.filename} {/* Now displays actual filename */}
+  </button>
+))}
         </div>
       ) : null}
-{isSubmitted && submission?.file?.length > 0 && (
-  <div className="mt-4 space-y-2">
-    <h4 className="font-semibold text-sm text-gray-700">Submitted Files:</h4>
-    {submission.file.map((fileId: string, idx: number) => (
-      <a
-        key={fileId}
-        href={`http://localhost:5001/api/attachments/${fileId}`}
-        target="_blank"
-        rel="noreferrer"
-        className="text-blue-600 text-sm flex items-center gap-1 hover:underline"
-      >
-        <DownloadCloud size={16} /> File #{idx + 1}
-      </a>
-    ))}
+
+
+
+
+
+{isSubmitted && (
+  <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4 shadow-sm">
+    <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+      <ClipboardCheck size={20} className="text-gray-600" />
+      Submitted Files
+    </h3>
+    
+    <div className="space-y-3">
+      {submission?.file?.map((file: any) => (
+        <div 
+          key={file._id}
+          className="p-4 border rounded-lg hover:shadow-md transition-shadow cursor-pointer flex items-center gap-3"
+          onClick={() => handleDownload(file)}
+        >
+          <div className="p-2 bg-blue-50 rounded-full">
+            <File size={18} className="text-blue-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-gray-900 truncate">
+              {file.filename}
+            </p>
+            <p className="text-xs text-gray-500">Click to download</p>
+          </div>
+          <DownloadCloud size={18} className="text-gray-400" />
+        </div>
+      ))}
+    </div>
   </div>
 )}
 

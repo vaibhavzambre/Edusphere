@@ -17,12 +17,14 @@ import messageRoutes from "./routes/messageRoutes.js";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import conversationRoutes from "./routes/conversations.js";
+import supportRoutes from "./routes/supportRoutes.js";
 import assignmentRoutes from "./routes/assignmentRoutes.js"
-// Import the announcement cleanup utility...
 import submissionRoutes from "./routes/submissionRoutes.js";
-
-import "./utils/announcementCleanup.js";
 import file from './routes/file.js'
+
+// Import the announcement cleanup utility...
+import "./utils/announcementCleanup.js";
+
 dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -88,6 +90,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/resources", resourceRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/conversations", conversationRoutes);
+app.use("/api/support", supportRoutes);
 app.use("/api/assignments", assignmentRoutes);
 app.use("/api/submissions", submissionRoutes); // ✅ this should exist
 

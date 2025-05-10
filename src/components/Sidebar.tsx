@@ -93,12 +93,10 @@ const Sidebar: React.FC = () => {
           { icon: Users, label: "Manage Students", path: "/ManageStudents" },
           { icon: BookOpen, label: "Manage Subjects", path: "/ManageSubjects" },
           { icon: Layers, label: "Manage Classes", path: "/ManageClasses" },
-          { icon: BarChart, label: "System Analytics", path: "/admin/analytics" },
         ]
       : []),
 
     // Shared
-    { icon: GraduationCap, label: "Exams", path: "/exams" },
     { icon: AlertCircle, label: "Support", path: "/support" },
     { icon: Settings, label: "Settings", path: "/settings" },
   ];

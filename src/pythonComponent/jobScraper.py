@@ -18,7 +18,7 @@ except Exception as e:
     exit()
 
 # Initialize WebDriver
-service = Service('C:/Users/ASUS/Downloads/BACKUP LATESTT/src/pythonComponent/chromedriver-win64/chromedriver.exe')
+service = Service('C:/Users/ASUS/Downloads/Edusphere-main/src/pythonComponent/chromedriver-win64/chromedriver.exe')
 driver = webdriver.Chrome(service=service)
 
 def scrape_jobs():

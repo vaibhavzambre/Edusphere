@@ -254,6 +254,7 @@ export default function ConversationList({
       setFilteredUsers([]);
     }
   }, [searchQuery, allUsers]);
+
   const handleSelectUser = (selectedUser: User) => {
     // Step 1: Check if a 1-to-1 conversation already exists with this user
     const existing = conversations.find(

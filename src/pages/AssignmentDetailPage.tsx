@@ -6,6 +6,7 @@ import { ArrowLeft, Pencil, Download, File, Link2, CheckCircle, XCircle, Calenda
 import AssignmentFormModal from "../components/assignment/AssignmentFormModal";
 import { Document, Page } from 'react-pdf';
 import { PDFViewer } from '@react-pdf/renderer';
+import FilePreviewer from '../components/assignment/FileViewer';
 
 interface StudentSubmission {
   _id: string;
@@ -23,7 +24,47 @@ interface StudentSubmission {
   feedback?: string;
   status: 'submitted' | 'graded' | 'needs-revision';
 }
+// Update the FileDisplay component
+const FileDisplay = ({ fileId, index }: { fileId: string, index: number }) => {
+  const [filename, setFilename] = useState(`File ${index + 1}`);
 
+  useEffect(() => {
+    const fetchMetadata = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        const response = await fetch(
+          `http://localhost:5001/api/file/${fileId}/metadata`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const data = await response.json();
+        setFilename(data.filename);
+      } catch (error) {
+        console.error("Error fetching metadata:", error);
+      }
+    };
+
+    fetchMetadata();
+  }, [fileId]);
+
+  return (
+    <div className="flex items-center gap-2">
+      <a
+        href={`http://localhost:5001/api/attachments/${fileId}`}
+        download
+        className="flex items-center gap-1 text-blue-600 hover:text-blue-700"
+      >
+        <Download size={16} />
+        <span>{filename}</span>
+      </a>
+      <button
+        onClick={() => setPreviewFile(fileId)}
+        className="text-blue-600 hover:text-blue-700 text-sm"
+      >
+        Preview
+      </button>
+    </div>
+  );
+};
 function AssignmentDetailPage(): JSX.Element {
   const [previewFile, setPreviewFile] = useState<string | null>(null);
   const { assignmentId } = useParams();
@@ -421,7 +462,7 @@ const FileDisplay = ({ fileId, index }: { fileId: string, index: number }) => (
         }}
       />
 
-      {previewFile && (
+      {/* {previewFile && (
         <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-6">
           <div className="bg-white rounded-xl shadow-lg w-full max-w-4xl h-[80vh] overflow-hidden relative">
             <button
@@ -433,7 +474,13 @@ const FileDisplay = ({ fileId, index }: { fileId: string, index: number }) => (
             <FileViewer fileId={previewFile} />
           </div>
         </div>
-      )}
+      )} */}
+      {previewFile && (
+  <FilePreviewer 
+    fileId={previewFile}
+    onClose={() => setPreviewFile(null)}
+  />
+)}
     </div>
   );
 };

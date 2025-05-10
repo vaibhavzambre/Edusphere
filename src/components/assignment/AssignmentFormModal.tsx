@@ -81,37 +81,46 @@ const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
       console.log("📄 existingAssignment:", existingAssignment);
     }
   }, [isOpen, isEditMode, existingAssignment]);
-
   useEffect(() => {
     if (isEditMode && existingAssignment?.files?.length > 0) {
-      const token = localStorage.getItem("token");
-      console.log("📡 Fetching metadata for files:", existingAssignment.files);
-  
-      Promise.all(
-        existingAssignment.files.map(async (fileId: string) => {
-          try {
-            console.log("➡️ Sending request for fileId:", fileId);
-            const res = await fetch(`http://localhost:5001/api/assignments/file/${fileId}/metadata`, {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-  
-            const text = await res.text(); // <-- parse text to inspect manually
-            try {
-              const metadata = JSON.parse(text);
-              console.log("✅ Received metadata:", metadata);
-              return { _id: fileId, name: metadata.filename || "Uploaded File" };
-            } catch (parseErr) {
-              console.warn("⚠️ Could not parse metadata JSON:", text);
-              return { _id: fileId, name: "Unknown File" };
-            }
-          } catch (err) {
-            console.error("❌ Error fetching file metadata:", err);
-            return { _id: fileId, name: "Unknown File" };
-          }
-        })
-      ).then(setUploadedFiles);
+      // Directly use the filename from the existing assignment data
+      const filesWithNames = existingAssignment.files.map((file: any) => ({
+        _id: file._id,
+        name: file.filename || "Uploaded File" // Use filename from assignment data
+      }));
+      setUploadedFiles(filesWithNames);
     }
   }, [isEditMode, existingAssignment?.files, isOpen]);
+  // useEffect(() => {
+  //   if (isEditMode && existingAssignment?.files?.length > 0) {
+  //     const token = localStorage.getItem("token");
+  //     console.log("📡 Fetching metadata for files:", existingAssignment.files);
+  
+  //     Promise.all(
+  //       existingAssignment.files.map(async (fileId: string) => {
+  //         try {
+  //           console.log("➡️ Sending request for fileId:", fileId);
+  //           const res = await fetch(`http://localhost:5001/api/assignments/file/${fileId}/metadata`, {
+  //             headers: { Authorization: `Bearer ${token}` },
+  //           });
+  
+  //           const text = await res.text(); // <-- parse text to inspect manually
+  //           try {
+  //             const metadata = JSON.parse(text);
+  //             console.log("✅ Received metadata:", metadata);
+  //             return { _id: fileId, name: metadata.filename || "Uploaded File" };
+  //           } catch (parseErr) {
+  //             console.warn("⚠️ Could not parse metadata JSON:", text);
+  //             return { _id: fileId, name: "Unknown File" };
+  //           }
+  //         } catch (err) {
+  //           console.error("❌ Error fetching file metadata:", err);
+  //           return { _id: fileId, name: "Unknown File" };
+  //         }
+  //       })
+  //     ).then(setUploadedFiles);
+  //   }
+  // }, [isEditMode, existingAssignment?.files, isOpen]);
   
   
   useEffect(() => {
@@ -301,14 +310,14 @@ const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
   // Handle form submit (we keep axios here for the file upload and create assignment request)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
+    
     try {
       let uploadedFileId = null;
       if (formData.files) {
         const fd = new FormData();
         fd.append("file", formData.files);
         const token = localStorage.getItem("token");
-
+  
         const uploadRes = await axios.post("http://localhost:5001/api/assignments/upload", fd, {
           headers: {
             "Content-Type": "multipart/form-data",
@@ -316,51 +325,49 @@ const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
           },
         });
         
-        uploadedFileId = uploadRes.data.fileId;
+        // Fix here: Access the file ID from the correct response structure
+        uploadedFileId = uploadRes.data.file.fileId; // Was uploadRes.data.fileId
       }
-
+  
       const payload = {
         ...formData,
-        // Send file as array (even if a single file)
         files: [
           ...uploadedFiles.map((f) => f._id),
           ...(uploadedFileId ? [uploadedFileId] : [])
         ],
-                  links: resourceLinks.filter((l) => l.trim() !== ""),
-        // Combine student and teacher selections if individual recipients are enabled
+        links: resourceLinks.filter((l) => l.trim() !== ""),
         assignedTo: useSpecificStudents ? [...selectedStudents, ...selectedTeachers] : [],
       };
+  
+      // Rest of the code remains same
       const url = isEditMode
-      ? `http://localhost:5001/api/assignments/${existingAssignment._id}`
-      : `http://localhost:5001/api/assignments/create`;
-    
-    const method = isEditMode ? "put" : "post";
-    
-    await axios({
-      url,
-      method,
-      data: payload,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${localStorage.getItem("token")}`,
-      },
-    });
-    
-    toast.success(isEditMode ? "Assignment updated successfully" : "Assignment created successfully");
-    onClose();
-      onSuccess();
+        ? `http://localhost:5001/api/assignments/${existingAssignment._id}`
+        : `http://localhost:5001/api/assignments/create`;
+      
+      const response = await axios({
+        url,
+        method: isEditMode ? "put" : "post",
+        data: payload,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+      });
+  
+      toast.success(isEditMode ? "Assignment updated successfully" : "Assignment created successfully");
+      onSuccess(response.data.assignment);
+      onClose();
     } catch (err) {
       console.error(err);
-      toast.error("Failed to create assignment");
+      toast.error(err.response?.data?.message || "Failed to save assignment");
     }
   };
-
   return (
     <Dialog open={isOpen} onClose={onClose} className="relative z-50">
       <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
       <div className="fixed inset-0 flex items-center justify-center p-4">
         {/* Modal Panel with scrolling for overflow */}
-        <Dialog.Panel className="bg-white rounded-xl max-w-3xl w-full p-6 shadow-xl overflow-y-auto max-h-[80vh]">
+        <Dialog.Panel className="bg-white rounded-xl max-w-3xl w-full p-6 shadow-xl overflow-y-auto max-h-[90vh]">
           <Dialog.Title className="text-2xl font-bold flex items-center gap-2 mb-6">
             <BookOpen size={24} className="text-blue-600" />
             {isEditMode ? "Edit Assignment" : "Create New Assignment"}
@@ -395,7 +402,7 @@ const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
       className="w-full p-2 border rounded-md"
     />
                 </div>
-                <div>
+                {/* <div>
                   <label className="block text-sm font-medium mb-1">Category</label>
                   <select
                     name="category"
@@ -409,7 +416,7 @@ const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
                     <option value="exam">Exam</option>
                     <option value="project">Project</option>
                   </select>
-                </div>
+                </div> */}
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Instructions</label>
@@ -582,7 +589,7 @@ const AssignmentFormModal: React.FC<AssignmentFormModalProps> = ({
         <span>{file.name}</span>
         <button
           type="button"
-          onClick={() =>
+          onClick={() => 
             setUploadedFiles((prev) => prev.filter((f) => f._id !== file._id))
           }
           className="text-red-500 hover:text-red-700"
